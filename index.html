@@ -273,7 +273,8 @@
   <div class="card" style="background:#fff;border-radius:10px;padding:24px 26px;width:520px;max-width:100%">
     <h3 id="cedtitle" style="color:var(--navy);font-size:16px;margin-bottom:16px">Add Customer</h3>
     <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px 14px">
-      <div class="field wide" style="grid-column:1/-1"><label>Company Name *</label><input id="ce_name"></div>
+      <div class="field wide" style="grid-column:1/-1"><label>Company / Site Name *</label><input id="ce_name"></div>
+      <div class="field wide" style="grid-column:1/-1"><label>Parent Company (leave blank if this is the main company)</label><input id="ce_parent" list="parentlist" placeholder="e.g. A G Cranes Limited"><datalist id="parentlist"></datalist></div>
       <div class="field"><label>Address 1</label><input id="ce_a1"></div>
       <div class="field"><label>Address 2</label><input id="ce_a2"></div>
       <div class="field"><label>Address 3 / Town</label><input id="ce_a3"></div>
@@ -852,7 +853,7 @@ function compFull(c) {
 
 function stopOptions(sel) {
   return '<option value="">— choose a location —</option>' + COMPANIES.map(c =>
-    `<option value="${c.id}"${String(c.id) === String(sel) ? ' selected' : ''}>${esc(c.name)}${c.lat ? '' : ' (no map location)'}</option>`
+    `<option value="${c.id}"${String(c.id) === String(sel) ? ' selected' : ''}>${esc(c.name)}${c.parent_name ? ' — ' + esc(c.parent_name) : ''}${c.lat ? '' : ' (no map location)'}</option>`
   ).join('');
 }
 
@@ -946,10 +947,10 @@ function closeCustomers() {
 
 function renderCustomers() {
   const q = (document.getElementById('custsearch').value || '').toLowerCase();
-  const list = COMPANIES.filter(c => !q || (c.name + ' ' + compFull(c)).toLowerCase().includes(q));
+  const list = COMPANIES.filter(c => !q || (c.name + ' ' + (c.parent_name || '') + ' ' + compFull(c)).toLowerCase().includes(q));
   document.getElementById('custrows').innerHTML = list.map(c => `
     <tr>
-      <td><b>${esc(c.name)}</b>${c.is_home ? ' <span class="rolebadge">Home</span>' : ''}${c.lat ? '' : ' <span style="color:var(--red);font-size:10.5px">no map location</span>'}</td>
+      <td><b>${esc(c.name)}</b>${c.is_home ? ' <span class="rolebadge">Home</span>' : ''}${c.lat ? '' : ' <span style="color:var(--red);font-size:10.5px">no map location</span>'}${c.parent_name ? `<div class="src">site of ${esc(c.parent_name)}</div>` : ''}</td>
       <td>${esc(compAddr(c))}</td>
       <td style="white-space:nowrap">${esc(c.postcode)}</td>
       <td>${esc(c.contact)}</td>
@@ -965,9 +966,11 @@ function openCustEdit(id) {
   CUST_EDIT_ID = id;
   const c = id ? COMPANIES.find(x => x.id === id) : null;
   document.getElementById('cedtitle').textContent = c ? 'Edit Customer — ' + c.name : 'Add Customer';
-  for (const [f, k] of [['ce_name','name'],['ce_a1','address_1'],['ce_a2','address_2'],['ce_a3','address_3'],['ce_a4','address_4'],['ce_pc','postcode'],['ce_contact','contact'],['ce_email','email'],['ce_tel','landline'],['ce_mob','mobile']]) {
+  for (const [f, k] of [['ce_name','name'],['ce_parent','parent_name'],['ce_a1','address_1'],['ce_a2','address_2'],['ce_a3','address_3'],['ce_a4','address_4'],['ce_pc','postcode'],['ce_contact','contact'],['ce_email','email'],['ce_tel','landline'],['ce_mob','mobile']]) {
     document.getElementById(f).value = c ? (c[k] || '') : '';
   }
+  const parents = [...new Set(COMPANIES.filter(x => !x.parent_name && !x.is_home).map(x => x.name))].sort();
+  document.getElementById('parentlist').innerHTML = parents.map(p => `<option value="${esc(p)}">`).join('');
   document.getElementById('cedmsg').style.display = 'none';
   document.getElementById('custeditmodal').style.display = 'flex';
 }
@@ -991,6 +994,7 @@ async function saveCustomer() {
   const ll = pc ? await geocodePostcode(pc) : null;
   const body = {
     name,
+    parent_name: document.getElementById('ce_parent').value.trim(),
     address_1: document.getElementById('ce_a1').value.trim(),
     address_2: document.getElementById('ce_a2').value.trim(),
     address_3: document.getElementById('ce_a3').value.trim(),
