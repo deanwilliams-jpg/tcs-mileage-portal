@@ -89,6 +89,8 @@
   .ack.restore { color: #257a3e; }
   .src { font-size: 10.5px; color: var(--muted); }
   tr.deletedrow td { color: var(--muted); }
+  tr.siterow td { background: #f8fafc; }
+  tr.siterow td:first-child { border-left: 3px solid var(--orange); }
   tr.deletedrow td:not(:last-child) { text-decoration: line-through; }
   .rolebadge { font-size: 10.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 3px 9px; border-radius: 12px; background: #fdf0dd; color: #b06a0a; }
   #logtable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
@@ -945,20 +947,68 @@ function closeCustomers() {
   if (location.hash === '#customers') window.close();
 }
 
-function renderCustomers() {
-  const q = (document.getElementById('custsearch').value || '').toLowerCase();
-  const list = COMPANIES.filter(c => !q || (c.name + ' ' + (c.parent_name || '') + ' ' + compFull(c)).toLowerCase().includes(q));
-  document.getElementById('custrows').innerHTML = list.map(c => `
-    <tr>
-      <td><b>${esc(c.name)}</b>${c.is_home ? ' <span class="rolebadge">Home</span>' : ''}${c.lat ? '' : ' <span style="color:var(--red);font-size:10.5px">no map location</span>'}${c.parent_name ? `<div class="src">site of ${esc(c.parent_name)}</div>` : ''}</td>
+let EXPANDED = new Set();
+function toggleSites(key) {
+  if (EXPANDED.has(key)) EXPANDED.delete(key); else EXPANDED.add(key);
+  renderCustomers();
+}
+
+function custRow(c, isSite) {
+  return `
+    <tr${isSite ? ' class="siterow"' : ''}>
+      <td>${isSite ? '<span style="color:var(--muted);padding:0 6px 0 22px">&#8627;</span>' : ''}<b style="${isSite ? 'font-weight:500' : ''}">${esc(c.name)}</b>${c.is_home ? ' <span class="rolebadge">Home</span>' : ''}${c.lat ? '' : ' <span style="color:var(--red);font-size:10.5px">no map location</span>'}</td>
       <td>${esc(compAddr(c))}</td>
       <td style="white-space:nowrap">${esc(c.postcode)}</td>
       <td>${esc(c.contact)}</td>
       <td style="white-space:nowrap">${esc(c.landline || '')}</td>
       <td style="white-space:nowrap">${esc(c.mobile || '')}</td>
       <td><button class="ack" onclick="openCustEdit(${c.id})">&#9999; Edit</button></td>
-    </tr>`).join('');
-  document.getElementById('custcount').textContent = list.length + ' of ' + COMPANIES.length + ' customers shown. New customers are automatically placed on the map from their postcode.';
+    </tr>`;
+}
+
+function renderCustomers() {
+  const q = (document.getElementById('custsearch').value || '').toLowerCase();
+  const norm = s => (s || '').trim().toLowerCase();
+  const match = c => !q || (c.name + ' ' + (c.parent_name || '') + ' ' + compFull(c)).toLowerCase().includes(q);
+
+  // group: parents first, sites attached by parent_name
+  const groups = []; const byName = new Map();
+  for (const c of COMPANIES) {
+    if (!c.parent_name) { const g = { parent: c, name: c.name, sites: [] }; groups.push(g); byName.set(norm(c.name), g); }
+  }
+  const virtual = new Map();
+  for (const c of COMPANIES) {
+    if (!c.parent_name) continue;
+    let g = byName.get(norm(c.parent_name)) || virtual.get(norm(c.parent_name));
+    if (!g) { g = { parent: null, name: c.parent_name.trim(), sites: [] }; virtual.set(norm(c.parent_name), g); groups.push(g); }
+    g.sites.push(c);
+  }
+  groups.sort((a, b) => ((b.parent && b.parent.is_home) ? 1 : 0) - ((a.parent && a.parent.is_home) ? 1 : 0) || a.name.localeCompare(b.name));
+
+  let html = '', shownParents = 0, shownSites = 0;
+  for (const g of groups) {
+    g.sites.sort((a, b) => a.name.localeCompare(b.name));
+    const pMatch = g.parent ? match(g.parent) : (!q || g.name.toLowerCase().includes(q));
+    const siteMatches = g.sites.filter(match);
+    if (q && !pMatch && !siteMatches.length) continue;
+    const key = norm(g.name);
+    const showSites = q ? (siteMatches.length ? siteMatches : (EXPANDED.has(key) ? g.sites : [])) : (EXPANDED.has(key) ? g.sites : []);
+    const isOpen = showSites.length > 0;
+    const chevron = g.sites.length
+      ? `<button class="ack" style="color:var(--navy);font-size:12px;margin-right:6px" onclick="toggleSites('${esc(key).replace(/'/g, "\\'")}')">${isOpen ? '&#9662;' : '&#9656;'} ${g.sites.length} site${g.sites.length > 1 ? 's' : ''}</button>`
+      : '';
+    if (g.parent) {
+      shownParents++;
+      html += custRow(g.parent, false).replace('</b>', '</b> ' + chevron);
+    } else {
+      shownParents++;
+      html += `<tr><td colspan="6"><b>${esc(g.name)}</b> ${chevron} <span class="src">parent listed in old system only</span></td><td></td></tr>`;
+    }
+    for (const s of showSites) { shownSites++; html += custRow(s, true); }
+  }
+  document.getElementById('custrows').innerHTML = html;
+  document.getElementById('custcount').textContent = shownParents + ' companies shown (' + (q ? shownSites + ' matching sites' : 'click "&#9656; n sites" to open a company\'s locations') + '). ' + COMPANIES.length + ' records in total.';
+  document.getElementById('custcount').innerHTML = document.getElementById('custcount').textContent.replace('&#9656;', '&#9656;');
 }
 
 let CUST_EDIT_ID = null;
