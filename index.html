@@ -757,21 +757,26 @@ async function saveEntry() {
 function csvCell(v) { v = String(v ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
 
 function buildCSV() {
-  const head = ['travel_date', 'created_by', 'from', 'to', 'leg_miles', 'journey_total_miles', 'status', 'purpose', 'logged', 'source', 'notes'];
+  // wide format: one row per journey, each stop and its mileage in its own pair of columns
+  const legsOf = r => (Array.isArray(r.route_legs) && r.route_legs.length)
+    ? r.route_legs
+    : [{ from: r.home_address, to: r.destination_address, miles: r.miles_travelled }];
+  const maxLegs = Math.max(1, ...VIEW.map(r => legsOf(r).length));
+  const head = ['travel_date', 'created_by', 'start'];
+  for (let i = 1; i <= maxLegs; i++) head.push('stop_' + i, 'stop_' + i + '_miles');
+  head.push('journey_total_miles', 'status', 'purpose', 'logged', 'source', 'notes');
   if (isAdmin()) head.push('deleted');
   const lines = [head.join(',')];
   for (const r of VIEW) {
-    const common = [r.status, r.purpose, (r.created_at || '').slice(0, 10), r.source, r.notes];
-    if (isAdmin()) common.push(r.deleted ? 'yes' : '');
-    const legs = Array.isArray(r.route_legs) ? r.route_legs : null;
-    if (legs && legs.length) {
-      for (const l of legs) {
-        lines.push([fmtDate(r.travel_date), r.created_by, l.from, l.to, l.miles, '', ...common].map(csvCell).join(','));
-      }
-      lines.push([fmtDate(r.travel_date), r.created_by, '', 'JOURNEY TOTAL', '', r.miles_travelled, ...common].map(csvCell).join(','));
-    } else {
-      lines.push([fmtDate(r.travel_date), r.created_by, r.home_address, r.destination_address, r.miles_travelled, r.miles_travelled, ...common].map(csvCell).join(','));
+    const legs = legsOf(r);
+    const row = [fmtDate(r.travel_date), r.created_by, legs[0].from];
+    for (let i = 0; i < maxLegs; i++) {
+      if (legs[i]) row.push(legs[i].to, legs[i].miles);
+      else row.push('', '');
     }
+    row.push(r.miles_travelled, r.status, r.purpose, (r.created_at || '').slice(0, 10), r.source, r.notes);
+    if (isAdmin()) row.push(r.deleted ? 'yes' : '');
+    lines.push(row.map(csvCell).join(','));
   }
   return lines.join('\n');
 }
