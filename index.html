@@ -123,7 +123,7 @@
   <div class="card">
     <h1>TOTAL CRANE SOLUTIONS</h1>
     <div class="sub">Mileage Portal</div>
-    <input id="pass" type="password" placeholder="Enter portal passcode" autocomplete="current-password">
+    <input id="pass" type="password" placeholder="Enter portal passcode" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
     <button onclick="tryLogin()">Sign in</button>
     <div class="err" id="gateerr">Incorrect passcode — please try again.</div>
   </div>
@@ -294,18 +294,22 @@ function applyRoleUI() {
 }
 
 async function tryLogin() {
-  KEY = document.getElementById('pass').value.trim();
-  document.getElementById('gateerr').style.display = 'none';
+  KEY = document.getElementById('pass').value.trim().toLowerCase();
+  const err = document.getElementById('gateerr');
+  err.style.display = 'none';
   try {
     const rows = await fetchAll();
-    if (!rows.length) throw new Error('empty');
+    if (!rows.length) throw new Error('badkey');
     localStorage.setItem('tcs_portal_key', KEY);
     DATA = rows;
     document.getElementById('gate').style.display = 'none';
     applyRoleUI();
     initUI();
   } catch (e) {
-    document.getElementById('gateerr').style.display = 'block';
+    err.textContent = e.message === 'badkey'
+      ? 'Incorrect passcode — please check it and try again. Capital letters and spaces don’t matter.'
+      : 'Could not reach the server — check your internet connection and try again.';
+    err.style.display = 'block';
   }
 }
 document.getElementById('pass').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
