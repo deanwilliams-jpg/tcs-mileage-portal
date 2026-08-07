@@ -261,7 +261,7 @@
     </div>
     <div style="max-height:74vh;overflow:auto;border:1px solid var(--line);border-radius:6px">
       <table id="logtable">
-        <thead><tr><th>Name</th><th>Address</th><th>Postcode</th><th>Contact</th><th>Phone</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>Address</th><th>Postcode</th><th>Contact</th><th>Landline</th><th>Mobile</th><th></th></tr></thead>
         <tbody id="custrows"></tbody>
       </table>
     </div>
@@ -281,7 +281,8 @@
       <div class="field"><label>Postcode *</label><input id="ce_pc" autocapitalize="characters"></div>
       <div class="field"><label>Contact Name</label><input id="ce_contact"></div>
       <div class="field"><label>Email</label><input id="ce_email"></div>
-      <div class="field"><label>Telephone</label><input id="ce_tel"></div>
+      <div class="field"><label>Landline</label><input id="ce_tel" placeholder="01902 …"></div>
+      <div class="field"><label>Mobile</label><input id="ce_mob" placeholder="07…"></div>
     </div>
     <div id="cedmsg" style="font-size:12.5px;margin-top:10px;display:none"></div>
     <div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end">
@@ -936,7 +937,8 @@ function renderCustomers() {
       <td>${esc(compAddr(c))}</td>
       <td style="white-space:nowrap">${esc(c.postcode)}</td>
       <td>${esc(c.contact)}</td>
-      <td style="white-space:nowrap">${esc(c.telephone)}</td>
+      <td style="white-space:nowrap">${esc(c.landline || '')}</td>
+      <td style="white-space:nowrap">${esc(c.mobile || '')}</td>
       <td><button class="ack" onclick="openCustEdit(${c.id})">&#9999; Edit</button></td>
     </tr>`).join('');
   document.getElementById('custcount').textContent = list.length + ' of ' + COMPANIES.length + ' customers shown. New customers are automatically placed on the map from their postcode.';
@@ -947,7 +949,7 @@ function openCustEdit(id) {
   CUST_EDIT_ID = id;
   const c = id ? COMPANIES.find(x => x.id === id) : null;
   document.getElementById('cedtitle').textContent = c ? 'Edit Customer — ' + c.name : 'Add Customer';
-  for (const [f, k] of [['ce_name','name'],['ce_a1','address_1'],['ce_a2','address_2'],['ce_a3','address_3'],['ce_a4','address_4'],['ce_pc','postcode'],['ce_contact','contact'],['ce_email','email'],['ce_tel','telephone']]) {
+  for (const [f, k] of [['ce_name','name'],['ce_a1','address_1'],['ce_a2','address_2'],['ce_a3','address_3'],['ce_a4','address_4'],['ce_pc','postcode'],['ce_contact','contact'],['ce_email','email'],['ce_tel','landline'],['ce_mob','mobile']]) {
     document.getElementById(f).value = c ? (c[k] || '') : '';
   }
   document.getElementById('cedmsg').style.display = 'none';
@@ -980,7 +982,8 @@ async function saveCustomer() {
     postcode: pc.toUpperCase(),
     contact: document.getElementById('ce_contact').value.trim(),
     email: document.getElementById('ce_email').value.trim(),
-    telephone: document.getElementById('ce_tel').value.trim()
+    landline: document.getElementById('ce_tel').value.trim(),
+    mobile: document.getElementById('ce_mob').value.trim()
   };
   if (ll) { body.lat = ll.lat; body.lon = ll.lon; }
   const r = await fetch(CUST_EDIT_ID ? COMP + '?id=eq.' + CUST_EDIT_ID : COMP, {
