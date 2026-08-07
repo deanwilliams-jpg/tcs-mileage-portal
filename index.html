@@ -424,6 +424,8 @@ function resetFilters() {
   applyFilters();
 }
 document.getElementById('f_deleted').addEventListener('change', applyFilters);
+// typing the miles by hand means the stored leg breakdown no longer applies
+document.getElementById('n_miles').addEventListener('input', () => { ROUTE_LEGS = null; });
 
 document.querySelectorAll('thead th[data-k]').forEach(th => {
   th.addEventListener('click', () => {
@@ -688,6 +690,7 @@ function openEdit(id) {
   document.getElementById('modaltitle').textContent = 'Amend Mileage Entry — ' + fmtDate(r.travel_date);
   document.getElementById('savebtn').textContent = 'Save changes';
   resetStops();
+  ROUTE_LEGS = r.route_legs || null;
   document.getElementById('n_by').value = r.created_by || '';
   document.getElementById('n_date').value = r.travel_date || '';
   document.getElementById('n_home').value = r.home_address || '';
@@ -714,7 +717,8 @@ async function saveEntry() {
     created_by: by, travel_date: date, destination_address: dest,
     home_address: document.getElementById('n_home').value.trim(),
     purpose: document.getElementById('n_purpose').value.trim() || 'site visit',
-    miles_travelled: miles, notes: document.getElementById('n_notes').value.trim()
+    miles_travelled: miles, notes: document.getElementById('n_notes').value.trim(),
+    route_legs: ROUTE_LEGS
   };
   document.getElementById('savebtn').disabled = true;
   let r;
@@ -750,16 +754,36 @@ async function saveEntry() {
   }
 }
 
+function csvCell(v) { v = String(v ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+
+function buildCSV() {
+  const head = ['travel_date', 'created_by', 'from', 'to', 'leg_miles', 'journey_total_miles', 'status', 'purpose', 'logged', 'source', 'notes'];
+  if (isAdmin()) head.push('deleted');
+  const lines = [head.join(',')];
+  for (const r of VIEW) {
+    const common = [r.status, r.purpose, (r.created_at || '').slice(0, 10), r.source, r.notes];
+    if (isAdmin()) common.push(r.deleted ? 'yes' : '');
+    const legs = Array.isArray(r.route_legs) ? r.route_legs : null;
+    if (legs && legs.length) {
+      for (const l of legs) {
+        lines.push([fmtDate(r.travel_date), r.created_by, l.from, l.to, l.miles, '', ...common].map(csvCell).join(','));
+      }
+      lines.push([fmtDate(r.travel_date), r.created_by, '', 'JOURNEY TOTAL', '', r.miles_travelled, ...common].map(csvCell).join(','));
+    } else {
+      lines.push([fmtDate(r.travel_date), r.created_by, r.home_address, r.destination_address, r.miles_travelled, r.miles_travelled, ...common].map(csvCell).join(','));
+    }
+  }
+  return lines.join('\n');
+}
+
 function exportCSV() {
-  const cols = ['travel_date', 'created_by', 'home_address', 'destination_address', 'purpose', 'miles_travelled', 'status', 'created_at', 'source', 'notes'];
-  if (isAdmin()) cols.push('deleted');
-  const lines = [cols.join(',')].concat(VIEW.map(r =>
-    cols.map(c => { let v = String(r[c] ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(',')
-  ));
-  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const now = new Date();
+  const p = n => String(n).padStart(2, '0');
+  const stamp = now.getFullYear() + '-' + p(now.getMonth() + 1) + '-' + p(now.getDate()) + '_' + p(now.getHours()) + p(now.getMinutes()) + p(now.getSeconds());
+  const blob = new Blob([buildCSV()], { type: 'text/csv' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'tcs-mileage-export.csv';
+  a.download = 'tcs-mileage-export-' + stamp + '.csv';
   a.click();
 }
 
@@ -812,6 +836,8 @@ function renumberStops() {
   });
 }
 
+let ROUTE_LEGS = null;
+
 function resetStops() {
   document.getElementById('stops').innerHTML = '';
   const home = COMPANIES.find(c => c.is_home);
@@ -820,6 +846,7 @@ function resetStops() {
   document.getElementById('roundtrip').checked = true;
   const out = document.getElementById('routeout');
   out.style.display = 'none'; out.innerHTML = '';
+  ROUTE_LEGS = null;
 }
 
 function selectedStops() {
@@ -842,6 +869,7 @@ async function calcRoute() {
     if (!j.routes || !j.routes.length) throw new Error('no route');
     const legs = j.routes[0].legs;
     const totalMi = j.routes[0].distance / 1609.344;
+    ROUTE_LEGS = legs.map((l, i) => ({ from: pts[i].name, to: pts[i + 1].name, miles: +(l.distance / 1609.344).toFixed(1) }));
     document.getElementById('n_miles').value = totalMi.toFixed(1);
     const home = stops[0];
     document.getElementById('n_home').value = home.is_home ? home.address_1 : compFull(home);
