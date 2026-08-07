@@ -137,6 +137,7 @@
   <div class="page-title">Mileage Management</div>
   <span class="rolebadge" id="rolebadge" style="display:none">Admin</span>
   <div class="spacer"></div>
+  <button class="btn ghost" onclick="openCustomers()">Customers</button>
   <button class="btn ghost" id="logbtn" style="display:none" onclick="openLog()">Activity Log</button>
   <button class="btn ghost" onclick="logout()">Log out</button>
 </header>
@@ -222,8 +223,22 @@
     <div class="grid">
       <div class="field"><label>Created By *</label><input id="n_by" list="userlist" placeholder="Name"><datalist id="userlist"></datalist></div>
       <div class="field"><label>Date of Travel *</label><input id="n_date" type="date"></div>
+
+      <div class="field wide" style="background:#f5f8fb;border:1px solid var(--line);border-radius:8px;padding:12px">
+        <label style="margin-bottom:8px">Route planner &mdash; pick your stops and the mileage is worked out for you</label>
+        <div id="stops"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px">
+          <button type="button" class="btn ghost" onclick="addStop()">+ Add stop</button>
+          <label style="display:flex;align-items:center;gap:5px;font-weight:400;font-size:12.5px;margin:0">
+            <input type="checkbox" id="roundtrip" checked style="width:auto"> Round trip (return to start)
+          </label>
+          <button type="button" class="btn orange" onclick="calcRoute()">Calculate mileage</button>
+        </div>
+        <div id="routeout" style="font-size:12.5px;margin-top:8px;display:none"></div>
+      </div>
+
       <div class="field wide"><label>Home / Start Address</label><input id="n_home" placeholder="Start address"></div>
-      <div class="field wide"><label>Destination Address *</label><input id="n_dest" list="destlist" placeholder="Company / site address"><datalist id="destlist"></datalist></div>
+      <div class="field wide"><label>Destination Address *</label><input id="n_dest" list="destlist" placeholder="Company / site address, or use the route planner above"><datalist id="destlist"></datalist></div>
       <div class="field"><label>Purpose</label><input id="n_purpose" list="purposelist" placeholder="e.g. site visit"><datalist id="purposelist"></datalist></div>
       <div class="field"><label>Miles Travelled *</label><input id="n_miles" type="number" step="0.1" min="0" placeholder="0.0"></div>
       <div class="field wide"><label>Notes</label><input id="n_notes" placeholder="Optional"></div>
@@ -232,6 +247,46 @@
     <div class="actions">
       <button class="btn ghost" onclick="closeModal()">Cancel</button>
       <button class="btn orange" id="savebtn" onclick="saveEntry()">Save entry</button>
+    </div>
+  </div>
+</div>
+
+<div id="custmodal" style="position:fixed;inset:0;background:rgba(20,41,63,.55);display:none;align-items:flex-start;justify-content:center;z-index:55;padding:40px 16px;overflow-y:auto">
+  <div style="background:#fff;border-radius:10px;padding:22px 24px;width:860px;max-width:100%">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <h3 style="color:var(--navy);font-size:16px">Customers &amp; Locations</h3>
+      <input id="custsearch" placeholder="Search name, town or postcode…" style="flex:1;min-width:180px;padding:7px 9px;border:1px solid var(--line);border-radius:5px;font-size:13px" oninput="renderCustomers()">
+      <button class="btn orange" onclick="openCustEdit(null)">+ Add customer</button>
+      <button class="btn ghost" onclick="document.getElementById('custmodal').style.display='none'">Close</button>
+    </div>
+    <div style="max-height:58vh;overflow:auto;border:1px solid var(--line);border-radius:6px">
+      <table id="logtable">
+        <thead><tr><th>Name</th><th>Address</th><th>Postcode</th><th>Contact</th><th>Phone</th><th></th></tr></thead>
+        <tbody id="custrows"></tbody>
+      </table>
+    </div>
+    <div style="font-size:11.5px;color:var(--muted);margin-top:8px" id="custcount"></div>
+  </div>
+</div>
+
+<div id="custeditmodal" style="position:fixed;inset:0;background:rgba(20,41,63,.55);display:none;align-items:flex-start;justify-content:center;z-index:58;padding:40px 16px;overflow-y:auto">
+  <div class="card" style="background:#fff;border-radius:10px;padding:24px 26px;width:520px;max-width:100%">
+    <h3 id="cedtitle" style="color:var(--navy);font-size:16px;margin-bottom:16px">Add Customer</h3>
+    <div class="grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px 14px">
+      <div class="field wide" style="grid-column:1/-1"><label>Company Name *</label><input id="ce_name"></div>
+      <div class="field"><label>Address 1</label><input id="ce_a1"></div>
+      <div class="field"><label>Address 2</label><input id="ce_a2"></div>
+      <div class="field"><label>Address 3 / Town</label><input id="ce_a3"></div>
+      <div class="field"><label>Address 4 / County</label><input id="ce_a4"></div>
+      <div class="field"><label>Postcode *</label><input id="ce_pc" autocapitalize="characters"></div>
+      <div class="field"><label>Contact Name</label><input id="ce_contact"></div>
+      <div class="field"><label>Email</label><input id="ce_email"></div>
+      <div class="field"><label>Telephone</label><input id="ce_tel"></div>
+    </div>
+    <div id="cedmsg" style="font-size:12.5px;margin-top:10px;display:none"></div>
+    <div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn ghost" onclick="document.getElementById('custeditmodal').style.display='none'">Cancel</button>
+      <button class="btn orange" id="cedsave" onclick="saveCustomer()">Save customer</button>
     </div>
   </div>
 </div>
@@ -256,8 +311,10 @@
 <footer>Total Crane Solutions &mdash; internal mileage log. Data migrated from the previous job management platform (2,670 historical entries).</footer>
 
 <script>
-const SUPA = 'https://kndpyflayjeoujbacxlo.supabase.co/rest/v1/mileage_entries';
-const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuZHB5ZmxheWplb3VqYmFjeGxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzNDEyNDAsImV4cCI6MjEwMDkxNzI0MH0.Oav8wEK-g6Eb62yn1hOgd-qYuAbNdhdcsk3jvx0gAvM';
+const BASE = 'https://kwghkskcmwuskncjhfgf.supabase.co/rest/v1';
+const SUPA = BASE + '/mileage_entries';
+const COMP = BASE + '/mileage_companies';
+const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3Z2hrc2tjbXd1c2tuY2poZmdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxMjUxOTMsImV4cCI6MjEwMTcwMTE5M30.JLY_dyo1qbzlHNL2GqwQ9nCxNZIPhnSjckC1Z11o70k';
 
 let KEY = localStorage.getItem('tcs_portal_key') || '';
 let DATA = [];
@@ -305,6 +362,7 @@ async function tryLogin() {
     document.getElementById('gate').style.display = 'none';
     applyRoleUI();
     initUI();
+    fetchCompanies();
   } catch (e) {
     err.textContent = e.message === 'badkey'
       ? 'Incorrect passcode — please check it and try again. Capital letters and spaces don’t matter.'
@@ -619,6 +677,7 @@ function openModal() {
   EDIT_ID = null;
   document.getElementById('modaltitle').textContent = 'Add Mileage Entry';
   document.getElementById('savebtn').textContent = 'Save entry';
+  resetStops();
   document.getElementById('modal').style.display = 'flex';
 }
 
@@ -628,6 +687,7 @@ function openEdit(id) {
   EDIT_ID = id;
   document.getElementById('modaltitle').textContent = 'Amend Mileage Entry — ' + fmtDate(r.travel_date);
   document.getElementById('savebtn').textContent = 'Save changes';
+  resetStops();
   document.getElementById('n_by').value = r.created_by || '';
   document.getElementById('n_date').value = r.travel_date || '';
   document.getElementById('n_home').value = r.home_address || '';
@@ -703,10 +763,184 @@ function exportCSV() {
   a.click();
 }
 
+// ---------- customers & route planner ----------
+let COMPANIES = [];
+
+async function fetchCompanies() {
+  let all = [], from = 0, page = 500;
+  while (true) {
+    const r = await fetch(COMP + '?select=*&order=is_home.desc,name.asc', {
+      headers: hdrs({ 'Range': from + '-' + (from + page - 1), 'Range-Unit': 'items' })
+    });
+    if (!r.ok) return;
+    const batch = await r.json();
+    all = all.concat(batch);
+    if (batch.length < page) break;
+    from += page;
+  }
+  COMPANIES = all.filter(c => !c.expired);
+}
+
+function compAddr(c) {
+  return [c.address_1, c.address_2, c.address_3, c.address_4].filter(Boolean).join(', ');
+}
+function compFull(c) {
+  return [compAddr(c), c.postcode].filter(Boolean).join(', ');
+}
+
+function stopOptions(sel) {
+  return '<option value="">— choose a location —</option>' + COMPANIES.map(c =>
+    `<option value="${c.id}"${String(c.id) === String(sel) ? ' selected' : ''}>${esc(c.name)}${c.lat ? '' : ' (no map location)'}</option>`
+  ).join('');
+}
+
+function addStop(sel) {
+  const wrap = document.getElementById('stops');
+  const row = document.createElement('div');
+  row.className = 'stoprow';
+  row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-top:6px';
+  row.innerHTML = `<span style="font-size:11.5px;color:var(--muted);width:38px">Stop</span>
+    <select style="flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:5px;font-size:13px">${stopOptions(sel)}</select>
+    <button type="button" class="ack danger" title="Remove stop" onclick="this.parentElement.remove(); renumberStops()">&#10005;</button>`;
+  wrap.appendChild(row);
+  renumberStops();
+}
+
+function renumberStops() {
+  document.querySelectorAll('#stops .stoprow').forEach((r, i) => {
+    r.querySelector('span').textContent = i === 0 ? 'From' : i + '.';
+  });
+}
+
+function resetStops() {
+  document.getElementById('stops').innerHTML = '';
+  const home = COMPANIES.find(c => c.is_home);
+  addStop(home ? home.id : '');
+  addStop('');
+  document.getElementById('roundtrip').checked = true;
+  const out = document.getElementById('routeout');
+  out.style.display = 'none'; out.innerHTML = '';
+}
+
+function selectedStops() {
+  return [...document.querySelectorAll('#stops select')].map(s => COMPANIES.find(c => String(c.id) === s.value)).filter(Boolean);
+}
+
+async function calcRoute() {
+  const out = document.getElementById('routeout');
+  let stops = selectedStops();
+  const roundtrip = document.getElementById('roundtrip').checked;
+  if (stops.length < 2) { out.style.display = 'block'; out.innerHTML = '<span style="color:var(--red)">Pick at least two stops.</span>'; return; }
+  const noloc = stops.filter(s => !s.lat);
+  if (noloc.length) { out.style.display = 'block'; out.innerHTML = '<span style="color:var(--red)">No map location for: ' + esc(noloc.map(s => s.name).join(', ')) + '. Edit the customer and add a postcode.</span>'; return; }
+  const pts = roundtrip ? stops.concat([stops[0]]) : stops;
+  out.style.display = 'block'; out.innerHTML = 'Calculating&hellip;';
+  try {
+    const coords = pts.map(s => s.lon + ',' + s.lat).join(';');
+    const r = await fetch('https://router.project-osrm.org/route/v1/driving/' + coords + '?overview=false');
+    const j = await r.json();
+    if (!j.routes || !j.routes.length) throw new Error('no route');
+    const legs = j.routes[0].legs;
+    const totalMi = j.routes[0].distance / 1609.344;
+    document.getElementById('n_miles').value = totalMi.toFixed(1);
+    const home = stops[0];
+    document.getElementById('n_home').value = home.is_home ? home.address_1 : compFull(home);
+    document.getElementById('n_dest').value = stops.slice(1).map(s => s.name).join(' → ') + (roundtrip ? ' → back to start' : '');
+    const legHtml = legs.map((l, i) =>
+      `<div>${esc(pts[i].name)} &rarr; ${esc(pts[i + 1].name)}: <b>${(l.distance / 1609.344).toFixed(1)} mi</b></div>`).join('');
+    const gmaps = 'https://www.google.com/maps/dir/' + pts.map(s => encodeURIComponent(s.postcode || compFull(s))).join('/');
+    out.innerHTML = `<div style="color:#257a3e;font-weight:600">Total: ${totalMi.toFixed(1)} miles${roundtrip ? ' (round trip)' : ''} — filled in below</div>` + legHtml +
+      `<a href="${gmaps}" target="_blank" rel="noopener" style="color:var(--blue)">Check this route on Google Maps &rarr;</a>`;
+  } catch (e) {
+    out.innerHTML = '<span style="color:var(--red)">Could not work out the route just now — you can still type the miles in manually.</span>';
+  }
+}
+
+function openCustomers() {
+  document.getElementById('custmodal').style.display = 'flex';
+  renderCustomers();
+}
+
+function renderCustomers() {
+  const q = (document.getElementById('custsearch').value || '').toLowerCase();
+  const list = COMPANIES.filter(c => !q || (c.name + ' ' + compFull(c)).toLowerCase().includes(q));
+  document.getElementById('custrows').innerHTML = list.map(c => `
+    <tr>
+      <td><b>${esc(c.name)}</b>${c.is_home ? ' <span class="rolebadge">Home</span>' : ''}${c.lat ? '' : ' <span style="color:var(--red);font-size:10.5px">no map location</span>'}</td>
+      <td>${esc(compAddr(c))}</td>
+      <td style="white-space:nowrap">${esc(c.postcode)}</td>
+      <td>${esc(c.contact)}</td>
+      <td style="white-space:nowrap">${esc(c.telephone)}</td>
+      <td><button class="ack" onclick="openCustEdit(${c.id})">&#9999; Edit</button></td>
+    </tr>`).join('');
+  document.getElementById('custcount').textContent = list.length + ' of ' + COMPANIES.length + ' customers shown. New customers are automatically placed on the map from their postcode.';
+}
+
+let CUST_EDIT_ID = null;
+function openCustEdit(id) {
+  CUST_EDIT_ID = id;
+  const c = id ? COMPANIES.find(x => x.id === id) : null;
+  document.getElementById('cedtitle').textContent = c ? 'Edit Customer — ' + c.name : 'Add Customer';
+  for (const [f, k] of [['ce_name','name'],['ce_a1','address_1'],['ce_a2','address_2'],['ce_a3','address_3'],['ce_a4','address_4'],['ce_pc','postcode'],['ce_contact','contact'],['ce_email','email'],['ce_tel','telephone']]) {
+    document.getElementById(f).value = c ? (c[k] || '') : '';
+  }
+  document.getElementById('cedmsg').style.display = 'none';
+  document.getElementById('custeditmodal').style.display = 'flex';
+}
+
+async function geocodePostcode(pc) {
+  try {
+    const r = await fetch('https://api.postcodes.io/postcodes/' + encodeURIComponent(pc.replace(/\s+/g, '')));
+    const j = await r.json();
+    if (j.result) return { lat: j.result.latitude, lon: j.result.longitude };
+  } catch (e) {}
+  return null;
+}
+
+async function saveCustomer() {
+  const msg = document.getElementById('cedmsg');
+  const name = document.getElementById('ce_name').value.trim();
+  const pc = document.getElementById('ce_pc').value.trim();
+  if (!name) { msg.textContent = 'Please enter the company name.'; msg.style.color = 'var(--red)'; msg.style.display = 'block'; return; }
+  document.getElementById('cedsave').disabled = true;
+  msg.textContent = 'Finding the postcode on the map…'; msg.style.color = 'var(--muted)'; msg.style.display = 'block';
+  const ll = pc ? await geocodePostcode(pc) : null;
+  const body = {
+    name,
+    address_1: document.getElementById('ce_a1').value.trim(),
+    address_2: document.getElementById('ce_a2').value.trim(),
+    address_3: document.getElementById('ce_a3').value.trim(),
+    address_4: document.getElementById('ce_a4').value.trim(),
+    postcode: pc.toUpperCase(),
+    contact: document.getElementById('ce_contact').value.trim(),
+    email: document.getElementById('ce_email').value.trim(),
+    telephone: document.getElementById('ce_tel').value.trim()
+  };
+  if (ll) { body.lat = ll.lat; body.lon = ll.lon; }
+  const r = await fetch(CUST_EDIT_ID ? COMP + '?id=eq.' + CUST_EDIT_ID : COMP, {
+    method: CUST_EDIT_ID ? 'PATCH' : 'POST',
+    headers: hdrs({ 'Content-Type': 'application/json', 'Prefer': 'return=representation' }),
+    body: JSON.stringify(CUST_EDIT_ID ? body : Object.assign({ source: 'portal' }, body))
+  });
+  document.getElementById('cedsave').disabled = false;
+  if (r.ok) {
+    const [row] = await r.json();
+    if (CUST_EDIT_ID) { const i = COMPANIES.findIndex(x => x.id === CUST_EDIT_ID); if (i >= 0) COMPANIES[i] = row; }
+    else { COMPANIES.push(row); COMPANIES.sort((a, b) => (b.is_home ? 1 : 0) - (a.is_home ? 1 : 0) || a.name.localeCompare(b.name)); }
+    msg.textContent = 'Saved.' + (pc && !ll ? ' (Postcode not recognised — mileage can’t be worked out for this customer until it’s corrected.)' : '');
+    msg.style.color = pc && !ll ? '#b06a0a' : '#257a3e';
+    renderCustomers();
+    document.querySelectorAll('#stops select').forEach(s => { const v = s.value; s.innerHTML = stopOptions(v); });
+    if (!(pc && !ll)) setTimeout(() => { document.getElementById('custeditmodal').style.display = 'none'; }, 700);
+  } else {
+    msg.textContent = 'Save failed (HTTP ' + r.status + ').'; msg.style.color = 'var(--red)';
+  }
+}
+
 // auto-login if a stored key exists
 if (KEY) {
   fetchAll().then(rows => {
-    if (rows.length) { DATA = rows; document.getElementById('gate').style.display = 'none'; applyRoleUI(); initUI(); }
+    if (rows.length) { DATA = rows; document.getElementById('gate').style.display = 'none'; applyRoleUI(); initUI(); fetchCompanies(); }
   }).catch(() => {});
 }
 </script>
