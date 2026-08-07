@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>TCS Mileage Portal</title>
+<style>
+  :root {
+    --navy: #1b3a5b;
+    --navy-dark: #14293f;
+    --orange: #f0932b;
+    --blue: #2f80c3;
+    --red: #d9534f;
+    --bg: #eef2f6;
+    --line: #dde4ec;
+    --text: #2b3a4a;
+    --muted: #7a8899;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+
+  /* ---------- passcode gate ---------- */
+  #gate { position: fixed; inset: 0; background: var(--navy); display: flex; align-items: center; justify-content: center; z-index: 100; }
+  #gate .card { background: #fff; border-radius: 10px; padding: 36px 40px; width: 340px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+  #gate h1 { font-size: 19px; color: var(--navy); margin-bottom: 4px; }
+  #gate .sub { color: var(--orange); font-weight: 700; letter-spacing: 2px; font-size: 11px; text-transform: uppercase; margin-bottom: 20px; }
+  #gate input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; font-size: 15px; text-align: center; margin-bottom: 12px; }
+  #gate button { width: 100%; padding: 10px; background: var(--blue); border: 0; color: #fff; border-radius: 6px; font-size: 15px; cursor: pointer; }
+  #gate .err { color: var(--red); font-size: 12px; margin-top: 10px; display: none; }
+
+  /* ---------- layout ---------- */
+  header { background: #fff; border-bottom: 3px solid var(--orange); padding: 14px 26px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .brand { display: flex; flex-direction: column; line-height: 1.1; }
+  .brand .t1 { font-weight: 800; font-size: 18px; color: var(--navy); letter-spacing: .5px; }
+  .brand .t1 span { color: var(--orange); }
+  .brand .t2 { font-size: 10px; letter-spacing: 4px; color: var(--muted); text-transform: uppercase; }
+  header .page-title { margin-left: 18px; padding-left: 18px; border-left: 1px solid var(--line); font-size: 17px; color: var(--navy); font-weight: 600; }
+  header .spacer { flex: 1; }
+  header button { cursor: pointer; }
+
+  main { max-width: 1280px; margin: 22px auto; padding: 0 20px; }
+
+  .panel { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(20,41,63,.08); padding: 18px 20px; margin-bottom: 18px; }
+  .panel h2 { font-size: 15px; color: var(--navy); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+
+  .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px 16px; }
+  .field label { display: block; font-size: 11.5px; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+  .field input, .field select { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; font-size: 13px; background: #fff; color: var(--text); }
+  .btnrow { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .btn { padding: 8px 16px; border: 0; border-radius: 5px; font-size: 13px; cursor: pointer; color: #fff; }
+  .btn.blue { background: var(--blue); }
+  .btn.red { background: var(--red); }
+  .btn.navy { background: var(--navy); }
+  .btn.orange { background: var(--orange); }
+  .btn.ghost { background: #fff; color: var(--navy); border: 1px solid var(--line); }
+
+  .stats { display: flex; gap: 22px; flex-wrap: wrap; margin-left: auto; font-size: 13px; color: var(--muted); }
+  .stats b { color: var(--navy); font-size: 15px; }
+
+  .tablewrap { overflow-x: auto; max-height: 62vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
+  table { width: 100%; border-collapse: collapse; min-width: 980px; }
+  thead th { position: sticky; top: 0; background: #f7f9fb; color: var(--muted); font-size: 11.5px; text-transform: none; font-weight: 600; text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; white-space: nowrap; z-index: 2; }
+  thead th .arr { color: var(--orange); }
+  tbody td { padding: 9px 12px; border-bottom: 1px solid #edf1f5; vertical-align: top; }
+  tbody tr:hover { background: #f4f8fc; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11.5px; font-weight: 600; }
+  .pill.outstanding { background: #fdf0dd; color: #b06a0a; }
+  .pill.acknowledged { background: #e2f3e6; color: #257a3e; }
+  .ack { color: var(--blue); cursor: pointer; font-size: 12.5px; white-space: nowrap; background: none; border: none; padding: 0; }
+  .ack:hover { text-decoration: underline; }
+  .src { font-size: 10.5px; color: var(--muted); }
+
+  /* ---------- modal ---------- */
+  #modal { position: fixed; inset: 0; background: rgba(20,41,63,.55); display: none; align-items: flex-start; justify-content: center; z-index: 50; padding: 40px 16px; overflow-y: auto; }
+  #modal .card { background: #fff; border-radius: 10px; padding: 24px 26px; width: 520px; max-width: 100%; }
+  #modal h3 { color: var(--navy); font-size: 16px; margin-bottom: 16px; }
+  #modal .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+  #modal .grid .wide { grid-column: 1 / -1; }
+  #modal .actions { margin-top: 18px; display: flex; gap: 8px; justify-content: flex-end; }
+  #addmsg { font-size: 12.5px; margin-top: 10px; display: none; }
+
+  .fab { position: fixed; right: 28px; bottom: 28px; width: 52px; height: 52px; border-radius: 50%; background: var(--blue); color: #fff; font-size: 28px; border: 0; cursor: pointer; box-shadow: 0 4px 14px rgba(47,128,195,.5); line-height: 1; }
+  footer { text-align: center; color: var(--muted); font-size: 11.5px; padding: 18px 0 30px; }
+  @media (max-width: 700px) { #modal .grid { grid-template-columns: 1fr; } header .page-title { border: 0; padding: 0; margin: 0; } }
+</style>
+</head>
+<body>
+
+<div id="gate">
+  <div class="card">
+    <h1>TOTAL CRANE SOLUTIONS</h1>
+    <div class="sub">Mileage Portal</div>
+    <input id="pass" type="password" placeholder="Enter portal passcode" autocomplete="current-password">
+    <button onclick="tryLogin()">Sign in</button>
+    <div class="err" id="gateerr">Incorrect passcode — please try again.</div>
+  </div>
+</div>
+
+<header>
+  <div class="brand">
+    <div class="t1">TOTAL <span>CRANE</span> SOLUTIONS</div>
+    <div class="t2">Mileage Portal</div>
+  </div>
+  <div class="page-title">Mileage Management</div>
+  <div class="spacer"></div>
+  <button class="btn ghost" onclick="logout()">Log out</button>
+</header>
+
+<main>
+  <div class="panel">
+    <h2>&#128269; Search Filters</h2>
+    <div class="filters">
+      <div class="field"><label>Created By</label><select id="f_user"><option value="">All</option></select></div>
+      <div class="field"><label>Status</label><select id="f_status"><option value="">All</option><option>Outstanding</option><option>Acknowledged</option></select></div>
+      <div class="field"><label>Destination / Company</label><input id="f_dest" type="text" placeholder="e.g. Timet, Wolverhampton"></div>
+      <div class="field"><label>Date Range</label>
+        <select id="f_range">
+          <option value="">All time</option>
+          <option value="1">1 month</option>
+          <option value="2">2 months</option>
+          <option value="3">3 months</option>
+          <option value="6">6 months</option>
+          <option value="12" >12 months</option>
+        </select>
+      </div>
+      <div class="field"><label>Start Date</label><input id="f_start" type="date"></div>
+      <div class="field"><label>End Date</label><input id="f_end" type="date"></div>
+    </div>
+    <div class="btnrow">
+      <button class="btn blue" onclick="applyFilters()">Apply</button>
+      <button class="btn red" onclick="resetFilters()">Reset</button>
+      <button class="btn navy" onclick="exportCSV()">Export CSV</button>
+      <div class="stats">
+        <div>Entries: <b id="s_count">–</b></div>
+        <div>Total miles: <b id="s_miles">–</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th data-k="travel_date">Date of Travel <span class="arr" id="a_travel_date">&#9660;</span></th>
+            <th data-k="created_by">Created By <span class="arr" id="a_created_by"></span></th>
+            <th data-k="home_address">Home Address <span class="arr" id="a_home_address"></span></th>
+            <th data-k="destination_address">Destination Address <span class="arr" id="a_destination_address"></span></th>
+            <th data-k="purpose">Purpose <span class="arr" id="a_purpose"></span></th>
+            <th data-k="miles_travelled">Miles <span class="arr" id="a_miles_travelled"></span></th>
+            <th data-k="status">Status <span class="arr" id="a_status"></span></th>
+            <th data-k="created_at">Logged <span class="arr" id="a_created_at"></span></th>
+            <th>Option</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<button class="fab" title="Add mileage entry" onclick="openModal()">+</button>
+
+<div id="modal">
+  <div class="card">
+    <h3>Add Mileage Entry</h3>
+    <div class="grid">
+      <div class="field"><label>Created By *</label><input id="n_by" list="userlist" placeholder="Name"><datalist id="userlist"></datalist></div>
+      <div class="field"><label>Date of Travel *</label><input id="n_date" type="date"></div>
+      <div class="field wide"><label>Home / Start Address</label><input id="n_home" placeholder="Start address"></div>
+      <div class="field wide"><label>Destination Address *</label><input id="n_dest" list="destlist" placeholder="Company / site address"><datalist id="destlist"></datalist></div>
+      <div class="field"><label>Purpose</label><input id="n_purpose" list="purposelist" placeholder="e.g. site visit"><datalist id="purposelist"></datalist></div>
+      <div class="field"><label>Miles Travelled *</label><input id="n_miles" type="number" step="0.1" min="0" placeholder="0.0"></div>
+      <div class="field wide"><label>Notes</label><input id="n_notes" placeholder="Optional"></div>
+    </div>
+    <div id="addmsg"></div>
+    <div class="actions">
+      <button class="btn ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn orange" id="savebtn" onclick="saveEntry()">Save entry</button>
+    </div>
+  </div>
+</div>
+
+<footer>Total Crane Solutions &mdash; internal mileage log. Data migrated from the previous job management platform (2,670 historical entries).</footer>
+
+<script>
+const SUPA = 'https://kndpyflayjeoujbacxlo.supabase.co/rest/v1/mileage_entries';
+const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtuZHB5ZmxheWplb3VqYmFjeGxvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzNDEyNDAsImV4cCI6MjEwMDkxNzI0MH0.Oav8wEK-g6Eb62yn1hOgd-qYuAbNdhdcsk3jvx0gAvM';
+
+let KEY = localStorage.getItem('tcs_portal_key') || '';
+let DATA = [];
+let VIEW = [];
+let sortK = 'travel_date', sortDir = -1;
+
+function hdrs(extra) {
+  return Object.assign({ 'apikey': ANON, 'Authorization': 'Bearer ' + ANON, 'x-portal-key': KEY }, extra || {});
+}
+
+async function fetchAll() {
+  let all = [], from = 0, page = 1000;
+  while (true) {
+    const r = await fetch(SUPA + '?select=*&order=travel_date.desc,id.desc', {
+      headers: hdrs({ 'Range': from + '-' + (from + page - 1), 'Range-Unit': 'items' })
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const batch = await r.json();
+    all = all.concat(batch);
+    if (batch.length < page) break;
+    from += page;
+  }
+  return all;
+}
+
+async function tryLogin() {
+  KEY = document.getElementById('pass').value.trim();
+  document.getElementById('gateerr').style.display = 'none';
+  try {
+    const rows = await fetchAll();
+    if (!rows.length) throw new Error('empty');
+    localStorage.setItem('tcs_portal_key', KEY);
+    DATA = rows;
+    document.getElementById('gate').style.display = 'none';
+    initUI();
+  } catch (e) {
+    document.getElementById('gateerr').style.display = 'block';
+  }
+}
+document.getElementById('pass').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+
+function logout() {
+  localStorage.removeItem('tcs_portal_key');
+  location.reload();
+}
+
+function initUI() {
+  const users = [...new Set(DATA.map(r => r.created_by))].sort();
+  const dests = [...new Set(DATA.map(r => r.destination_address))].sort();
+  const purposes = [...new Set(DATA.map(r => r.purpose).filter(Boolean))].sort();
+  const sel = document.getElementById('f_user');
+  sel.innerHTML = '<option value="">All</option>' + users.map(u => `<option>${esc(u)}</option>`).join('');
+  document.getElementById('userlist').innerHTML = users.map(u => `<option value="${esc(u)}">`).join('');
+  document.getElementById('destlist').innerHTML = dests.map(d => `<option value="${esc(d)}">`).join('');
+  document.getElementById('purposelist').innerHTML = purposes.map(p => `<option value="${esc(p)}">`).join('');
+  const homes = DATA.filter(r => r.home_address).map(r => r.home_address);
+  if (homes.length) document.getElementById('n_home').value = homes[0];
+  document.getElementById('n_date').value = new Date().toISOString().slice(0, 10);
+  applyFilters();
+}
+
+document.getElementById('f_range').addEventListener('change', function () {
+  if (!this.value) { document.getElementById('f_start').value = ''; document.getElementById('f_end').value = ''; return; }
+  const end = new Date(), start = new Date();
+  start.setMonth(start.getMonth() - parseInt(this.value, 10));
+  document.getElementById('f_start').value = start.toISOString().slice(0, 10);
+  document.getElementById('f_end').value = end.toISOString().slice(0, 10);
+});
+
+function applyFilters() {
+  const u = document.getElementById('f_user').value;
+  const s = document.getElementById('f_status').value;
+  const d = document.getElementById('f_dest').value.toLowerCase();
+  const from = document.getElementById('f_start').value;
+  const to = document.getElementById('f_end').value;
+  VIEW = DATA.filter(r =>
+    (!u || r.created_by === u) &&
+    (!s || r.status === s) &&
+    (!d || (r.destination_address || '').toLowerCase().includes(d)) &&
+    (!from || r.travel_date >= from) &&
+    (!to || r.travel_date <= to)
+  );
+  sortView();
+  render();
+}
+
+function resetFilters() {
+  for (const id of ['f_user', 'f_status', 'f_dest', 'f_range', 'f_start', 'f_end']) document.getElementById(id).value = '';
+  applyFilters();
+}
+
+document.querySelectorAll('thead th[data-k]').forEach(th => {
+  th.addEventListener('click', () => {
+    const k = th.dataset.k;
+    if (sortK === k) sortDir = -sortDir; else { sortK = k; sortDir = k === 'travel_date' || k === 'created_at' || k === 'miles_travelled' ? -1 : 1; }
+    sortView(); render();
+  });
+});
+
+function sortView() {
+  VIEW.sort((a, b) => {
+    let x = a[sortK], y = b[sortK];
+    if (sortK === 'miles_travelled') { x = parseFloat(x); y = parseFloat(y); }
+    if (x < y) return -1 * sortDir;
+    if (x > y) return 1 * sortDir;
+    return 0;
+  });
+  document.querySelectorAll('.arr').forEach(el => el.textContent = '');
+  document.getElementById('a_' + sortK).innerHTML = sortDir === 1 ? '&#9650;' : '&#9660;';
+}
+
+function fmtDate(d) { if (!d) return ''; const [y, m, dd] = d.split('-'); return dd + '/' + m + '/' + y; }
+function fmtTS(t) { if (!t) return ''; return fmtDate(t.slice(0, 10)); }
+function esc(s) { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+function render() {
+  const tb = document.getElementById('rows');
+  tb.innerHTML = VIEW.map(r => `
+    <tr>
+      <td style="white-space:nowrap">${fmtDate(r.travel_date)}</td>
+      <td>${esc(r.created_by)}</td>
+      <td>${esc(r.home_address)}</td>
+      <td>${esc(r.destination_address)}${r.notes ? `<div class="src">${esc(r.notes)}</div>` : ''}</td>
+      <td>${esc(r.purpose)}</td>
+      <td class="num">${esc(r.miles_travelled)}</td>
+      <td><span class="pill ${r.status === 'Acknowledged' ? 'acknowledged' : 'outstanding'}">${esc(r.status)}</span></td>
+      <td style="white-space:nowrap">${fmtTS(r.created_at)}<div class="src">${r.source === 'legacy' ? 'migrated' : 'portal'}</div></td>
+      <td>${r.status === 'Outstanding' ? `<button class="ack" onclick="ack(${r.id})">&#9998; Acknowledge</button>` : ''}</td>
+    </tr>`).join('');
+  document.getElementById('s_count').textContent = VIEW.length.toLocaleString();
+  document.getElementById('s_miles').textContent = VIEW.reduce((t, r) => t + parseFloat(r.miles_travelled || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
+}
+
+async function ack(id) {
+  const r = await fetch(SUPA + '?id=eq.' + id, {
+    method: 'PATCH',
+    headers: hdrs({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }),
+    body: JSON.stringify({ status: 'Acknowledged' })
+  });
+  if (r.ok) {
+    const row = DATA.find(x => x.id === id);
+    if (row) row.status = 'Acknowledged';
+    applyFilters();
+  } else alert('Could not update entry (HTTP ' + r.status + ')');
+}
+
+function openModal() { document.getElementById('modal').style.display = 'flex'; }
+function closeModal() { document.getElementById('modal').style.display = 'none'; document.getElementById('addmsg').style.display = 'none'; }
+
+async function saveEntry() {
+  const msg = document.getElementById('addmsg');
+  const by = document.getElementById('n_by').value.trim();
+  const date = document.getElementById('n_date').value;
+  const dest = document.getElementById('n_dest').value.trim();
+  const miles = parseFloat(document.getElementById('n_miles').value);
+  if (!by || !date || !dest || !(miles >= 0)) {
+    msg.textContent = 'Please fill in the required fields (marked *).';
+    msg.style.color = 'var(--red)'; msg.style.display = 'block'; return;
+  }
+  const body = {
+    created_by: by, travel_date: date, destination_address: dest,
+    home_address: document.getElementById('n_home').value.trim(),
+    purpose: document.getElementById('n_purpose').value.trim() || 'site visit',
+    miles_travelled: miles, notes: document.getElementById('n_notes').value.trim(),
+    status: 'Outstanding', source: 'portal'
+  };
+  document.getElementById('savebtn').disabled = true;
+  const r = await fetch(SUPA, {
+    method: 'POST',
+    headers: hdrs({ 'Content-Type': 'application/json', 'Prefer': 'return=representation' }),
+    body: JSON.stringify(body)
+  });
+  document.getElementById('savebtn').disabled = false;
+  if (r.ok) {
+    const [row] = await r.json();
+    DATA.unshift(row);
+    msg.textContent = 'Saved.'; msg.style.color = '#257a3e'; msg.style.display = 'block';
+    document.getElementById('n_dest').value = ''; document.getElementById('n_miles').value = ''; document.getElementById('n_notes').value = '';
+    applyFilters();
+    setTimeout(closeModal, 700);
+  } else {
+    msg.textContent = 'Save failed (HTTP ' + r.status + '). Check the passcode is still valid.';
+    msg.style.color = 'var(--red)'; msg.style.display = 'block';
+  }
+}
+
+function exportCSV() {
+  const cols = ['travel_date', 'created_by', 'home_address', 'destination_address', 'purpose', 'miles_travelled', 'status', 'created_at', 'source', 'notes'];
+  const lines = [cols.join(',')].concat(VIEW.map(r =>
+    cols.map(c => { let v = String(r[c] ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(',')
+  ));
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tcs-mileage-export.csv';
+  a.click();
+}
+
+// auto-login if a stored key exists
+if (KEY) {
+  fetchAll().then(rows => {
+    if (rows.length) { DATA = rows; document.getElementById('gate').style.display = 'none'; initUI(); }
+  }).catch(() => {});
+}
+</script>
+</body>
+</html>
