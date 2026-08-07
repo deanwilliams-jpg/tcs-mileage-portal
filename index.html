@@ -854,9 +854,34 @@ function compFull(c) {
 }
 
 function stopOptions(sel) {
-  return '<option value="">— choose a location —</option>' + COMPANIES.map(c =>
-    `<option value="${c.id}"${String(c.id) === String(sel) ? ' selected' : ''}>${esc(c.name)}${c.parent_name ? ' — ' + esc(c.parent_name) : ''}${c.lat ? '' : ' (no map location)'}</option>`
-  ).join('');
+  // same parent-company grouping as the Customers page: parents are group
+  // headings, their sites sit indented beneath
+  const norm = s => (s || '').trim().toLowerCase();
+  const opt = (c, label) => `<option value="${c.id}"${String(c.id) === String(sel) ? ' selected' : ''}>${esc(label || c.name)}${c.lat ? '' : ' (no map location)'}</option>`;
+  const sitesByParent = new Map();
+  for (const c of COMPANIES) {
+    if (!c.parent_name) continue;
+    const k = norm(c.parent_name);
+    if (!sitesByParent.has(k)) sitesByParent.set(k, []);
+    sitesByParent.get(k).push(c);
+  }
+  let html = '<option value="">— choose a location —</option>';
+  for (const p of COMPANIES) {
+    if (p.parent_name) continue;
+    const sites = sitesByParent.get(norm(p.name));
+    if (sites) {
+      sites.sort((a, b) => a.name.localeCompare(b.name));
+      html += `<optgroup label="${esc(p.name)}">` + opt(p, p.name + ' (head office)') + sites.map(s => opt(s)).join('') + '</optgroup>';
+      sitesByParent.delete(norm(p.name));
+    } else {
+      html += opt(p);
+    }
+  }
+  for (const sites of sitesByParent.values()) {
+    sites.sort((a, b) => a.name.localeCompare(b.name));
+    html += `<optgroup label="${esc(sites[0].parent_name.trim())}">` + sites.map(s => opt(s)).join('') + '</optgroup>';
+  }
+  return html;
 }
 
 function addStop(sel) {
