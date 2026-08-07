@@ -137,7 +137,7 @@
   <div class="page-title">Mileage Management</div>
   <span class="rolebadge" id="rolebadge" style="display:none">Admin</span>
   <div class="spacer"></div>
-  <button class="btn ghost" onclick="openCustomers()">Customers</button>
+  <button class="btn ghost" onclick="openCustomersTab()">Customers</button>
   <button class="btn ghost" id="logbtn" style="display:none" onclick="openLog()">Activity Log</button>
   <button class="btn ghost" onclick="logout()">Log out</button>
 </header>
@@ -168,7 +168,7 @@
     <div class="btnrow">
       <button class="btn blue" onclick="applyFilters()">Apply</button>
       <button class="btn red" onclick="resetFilters()">Reset</button>
-      <button class="btn navy" onclick="exportCSV()">Export CSV</button>
+      <button class="btn navy" onclick="exportCSV()">Export spreadsheet</button>
       <div class="stats">
         <div>Entries: <b id="s_count">–</b></div>
         <div>Total miles: <b id="s_miles">–</b></div>
@@ -252,14 +252,14 @@
 </div>
 
 <div id="custmodal" style="position:fixed;inset:0;background:rgba(20,41,63,.55);display:none;align-items:flex-start;justify-content:center;z-index:55;padding:40px 16px;overflow-y:auto">
-  <div style="background:#fff;border-radius:10px;padding:22px 24px;width:860px;max-width:100%">
+  <div style="background:#fff;border-radius:10px;padding:22px 24px;width:min(1400px,96vw);max-width:100%">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
       <h3 style="color:var(--navy);font-size:16px">Customers &amp; Locations</h3>
       <input id="custsearch" placeholder="Search name, town or postcode…" style="flex:1;min-width:180px;padding:7px 9px;border:1px solid var(--line);border-radius:5px;font-size:13px" oninput="renderCustomers()">
       <button class="btn orange" onclick="openCustEdit(null)">+ Add customer</button>
-      <button class="btn ghost" onclick="document.getElementById('custmodal').style.display='none'">Close</button>
+      <button class="btn ghost" onclick="closeCustomers()">Close</button>
     </div>
-    <div style="max-height:58vh;overflow:auto;border:1px solid var(--line);border-radius:6px">
+    <div style="max-height:74vh;overflow:auto;border:1px solid var(--line);border-radius:6px">
       <table id="logtable">
         <thead><tr><th>Name</th><th>Address</th><th>Postcode</th><th>Contact</th><th>Phone</th><th></th></tr></thead>
         <tbody id="custrows"></tbody>
@@ -362,7 +362,7 @@ async function tryLogin() {
     document.getElementById('gate').style.display = 'none';
     applyRoleUI();
     initUI();
-    fetchCompanies();
+    fetchCompanies().then(() => { if (location.hash === '#customers') openCustomers(); });
   } catch (e) {
     err.textContent = e.message === 'badkey'
       ? 'Incorrect passcode — please check it and try again. Capital letters and spaces don’t matter.'
@@ -754,42 +754,66 @@ async function saveEntry() {
   }
 }
 
-function csvCell(v) { v = String(v ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
-
-function buildCSV() {
+function buildRows() {
   // wide format: one row per journey, each stop and its mileage in its own pair of columns
   const legsOf = r => (Array.isArray(r.route_legs) && r.route_legs.length)
     ? r.route_legs
     : [{ from: r.home_address, to: r.destination_address, miles: r.miles_travelled }];
   const maxLegs = Math.max(1, ...VIEW.map(r => legsOf(r).length));
-  const head = ['travel_date', 'created_by', 'start'];
-  for (let i = 1; i <= maxLegs; i++) head.push('stop_' + i, 'stop_' + i + '_miles');
-  head.push('journey_total_miles', 'status', 'purpose', 'logged', 'source', 'notes');
-  if (isAdmin()) head.push('deleted');
-  const lines = [head.join(',')];
+  const head = ['Date of Travel', 'Created By', 'Start'];
+  for (let i = 1; i <= maxLegs; i++) head.push('Stop ' + i, 'Stop ' + i + ' Miles');
+  head.push('Journey Total Miles', 'Status', 'Purpose', 'Logged', 'Source', 'Notes');
+  if (isAdmin()) head.push('Deleted');
+  const rows = [head];
   for (const r of VIEW) {
     const legs = legsOf(r);
     const row = [fmtDate(r.travel_date), r.created_by, legs[0].from];
     for (let i = 0; i < maxLegs; i++) {
-      if (legs[i]) row.push(legs[i].to, legs[i].miles);
+      if (legs[i]) row.push(legs[i].to, Number(legs[i].miles));
       else row.push('', '');
     }
-    row.push(r.miles_travelled, r.status, r.purpose, (r.created_at || '').slice(0, 10), r.source, r.notes);
+    row.push(Number(r.miles_travelled), r.status, r.purpose, (r.created_at || '').slice(0, 10), r.source, r.notes);
     if (isAdmin()) row.push(r.deleted ? 'yes' : '');
-    lines.push(row.map(csvCell).join(','));
+    rows.push(row);
   }
-  return lines.join('\n');
+  return rows;
 }
 
-function exportCSV() {
+let XLSX_READY = null;
+function loadXLSX() {
+  if (!XLSX_READY) XLSX_READY = new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+  return XLSX_READY;
+}
+
+async function exportCSV() {
   const now = new Date();
   const p = n => String(n).padStart(2, '0');
   const stamp = now.getFullYear() + '-' + p(now.getMonth() + 1) + '-' + p(now.getDate()) + '_' + p(now.getHours()) + p(now.getMinutes()) + p(now.getSeconds());
-  const blob = new Blob([buildCSV()], { type: 'text/csv' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'tcs-mileage-export-' + stamp + '.csv';
-  a.click();
+  const rows = buildRows();
+  try {
+    await loadXLSX();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    // size each column to fit its widest content so nothing is hidden
+    ws['!cols'] = rows[0].map((_, c) => ({
+      wch: Math.min(45, Math.max(...rows.map(r => String(r[c] ?? '').length), 10) + 3)
+    }));
+    ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Mileage');
+    XLSX.writeFile(wb, 'tcs-mileage-export-' + stamp + '.xlsx');
+  } catch (e) {
+    // offline fallback: plain CSV
+    const csv = rows.map(r => r.map(v => { v = String(v ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'tcs-mileage-export-' + stamp + '.csv';
+    a.click();
+  }
 }
 
 // ---------- customers & route planner ----------
@@ -889,9 +913,18 @@ async function calcRoute() {
   }
 }
 
+function openCustomersTab() {
+  window.open(location.pathname + '#customers', '_blank');
+}
+
 function openCustomers() {
   document.getElementById('custmodal').style.display = 'flex';
   renderCustomers();
+}
+
+function closeCustomers() {
+  document.getElementById('custmodal').style.display = 'none';
+  if (location.hash === '#customers') window.close();
 }
 
 function renderCustomers() {
@@ -973,7 +1006,7 @@ async function saveCustomer() {
 // auto-login if a stored key exists
 if (KEY) {
   fetchAll().then(rows => {
-    if (rows.length) { DATA = rows; document.getElementById('gate').style.display = 'none'; applyRoleUI(); initUI(); fetchCompanies(); }
+    if (rows.length) { DATA = rows; document.getElementById('gate').style.display = 'none'; applyRoleUI(); initUI(); fetchCompanies().then(() => { if (location.hash === '#customers') openCustomers(); }); }
   }).catch(() => {});
 }
 </script>
