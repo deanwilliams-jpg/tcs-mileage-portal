@@ -58,6 +58,21 @@
   .stats { display: flex; gap: 22px; flex-wrap: wrap; margin-left: auto; font-size: 13px; color: var(--muted); }
   .stats b { color: var(--navy); font-size: 15px; }
 
+  /* ---------- charts ---------- */
+  .charts { display: grid; grid-template-columns: 3fr 2fr; gap: 18px; margin-bottom: 18px; }
+  .chartcard { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(20,41,63,.08); padding: 16px 18px; min-width: 0; }
+  .chartcard h2 { font-size: 13.5px; color: var(--navy); margin-bottom: 2px; }
+  .chartcard .chartsub { font-size: 11.5px; color: var(--muted); margin-bottom: 10px; }
+  .chartcard svg { width: 100%; height: auto; display: block; }
+  .pierow { display: flex; align-items: center; gap: 16px; }
+  .pierow svg { width: 170px; flex: 0 0 170px; }
+  .plegend { flex: 1; min-width: 0; font-size: 12px; }
+  .plegend .lrow { display: flex; align-items: center; gap: 7px; padding: 2.5px 0; }
+  .plegend .sw { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 10px; border: 1px solid rgba(20,41,63,.15); }
+  .plegend .lname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+  .plegend .lval { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  @media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
+
   .tablewrap { overflow-x: auto; max-height: 62vh; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; }
   table { width: 100%; border-collapse: collapse; min-width: 980px; }
   thead th { position: sticky; top: 0; background: #f7f9fb; color: var(--muted); font-size: 11.5px; text-transform: none; font-weight: 600; text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; user-select: none; white-space: nowrap; z-index: 2; }
@@ -135,6 +150,22 @@
       <div class="stats">
         <div>Entries: <b id="s_count">–</b></div>
         <div>Total miles: <b id="s_miles">–</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="chartcard">
+      <h2>Miles over time</h2>
+      <div class="chartsub" id="barsub">Total miles per month, current filters</div>
+      <svg id="barchart" viewBox="0 0 640 230" role="img" aria-label="Miles per period bar chart"></svg>
+    </div>
+    <div class="chartcard">
+      <h2>Miles by company</h2>
+      <div class="chartsub">Share of miles, current filters</div>
+      <div class="pierow">
+        <svg id="piechart" viewBox="0 0 200 200" role="img" aria-label="Miles by company pie chart"></svg>
+        <div class="plegend" id="pielegend"></div>
       </div>
     </div>
   </div>
@@ -319,6 +350,148 @@ function render() {
     </tr>`).join('');
   document.getElementById('s_count').textContent = VIEW.length.toLocaleString();
   document.getElementById('s_miles').textContent = VIEW.reduce((t, r) => t + parseFloat(r.miles_travelled || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
+  drawCharts();
+}
+
+// ---------- charts ----------
+const PIE_COLORS = ['#2f80c3', '#f0932b', '#4c9f70', '#7a5195', '#d9534f', '#0f9b8e'];
+const OTHER_COLOR = '#c3c9d2';
+const svgNS = 'http://www.w3.org/2000/svg';
+
+function shortName(addr) {
+  let s = String(addr || '').trim();
+  const cut = s.search(/[,(]| Ltd| LTD| Limited| ltd/);
+  if (cut > 2) s = s.slice(0, cut + (/ Ltd| LTD| Limited| ltd/.test(s.slice(cut, cut + 8)) ? 4 : 0));
+  return s.length > 26 ? s.slice(0, 24) + '…' : (s || '(blank)');
+}
+
+function fmtMi(n) { return n.toLocaleString(undefined, { maximumFractionDigits: 1 }); }
+
+function drawCharts() {
+  drawBarChart();
+  drawPieChart();
+}
+
+function drawBarChart() {
+  const svg = document.getElementById('barchart');
+  svg.innerHTML = '';
+  if (!VIEW.length) return;
+
+  // bucket by month; fall back to quarter/year when the span is long
+  const months = new Set(VIEW.map(r => r.travel_date.slice(0, 7)));
+  let mode = 'month';
+  if (months.size > 72) mode = 'year'; else if (months.size > 30) mode = 'quarter';
+  const keyOf = d => mode === 'month' ? d.slice(0, 7) : mode === 'year' ? d.slice(0, 4) : d.slice(0, 4) + '-Q' + (Math.floor((+d.slice(5, 7) - 1) / 3) + 1);
+  const labelOf = k => mode === 'month' ? (k.slice(5) === '01' ? k.slice(0, 4) : ['', 'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+k.slice(5)]) : k;
+  document.getElementById('barsub').textContent = 'Total miles per ' + mode + ', current filters';
+
+  const sums = new Map();
+  for (const r of VIEW) {
+    const k = keyOf(r.travel_date);
+    sums.set(k, (sums.get(k) || 0) + parseFloat(r.miles_travelled || 0));
+  }
+  const keys = [...sums.keys()].sort();
+  const W = 640, H = 230, padL = 46, padR = 8, padT = 12, padB = 26;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const max = Math.max(...sums.values());
+  const niceMax = Math.ceil(max / 4 / 50) * 50 * 4 || 100;
+  const n = keys.length;
+  const step = plotW / n;
+  const barW = Math.max(2, Math.min(26, step * 0.72));
+
+  const mk = (tag, attrs, parent) => { const el = document.createElementNS(svgNS, tag); for (const a in attrs) el.setAttribute(a, attrs[a]); (parent || svg).appendChild(el); return el; };
+
+  // gridlines + y labels
+  for (let i = 0; i <= 4; i++) {
+    const v = niceMax * i / 4, y = padT + plotH - plotH * i / 4;
+    mk('line', { x1: padL, y1: y, x2: W - padR, y2: y, stroke: '#edf1f5', 'stroke-width': 1 });
+    const t = mk('text', { x: padL - 6, y: y + 3.5, 'text-anchor': 'end', 'font-size': 10, fill: '#7a8899' });
+    t.textContent = v >= 1000 ? (v / 1000) + 'k' : v;
+  }
+
+  const labelEvery = Math.ceil(n / 10);
+  keys.forEach((k, i) => {
+    const v = sums.get(k);
+    const h = Math.max(1, plotH * v / niceMax);
+    const x = padL + step * i + (step - barW) / 2;
+    const y = padT + plotH - h;
+    const g = mk('g', {});
+    const rect = mk('rect', { x, y, width: barW, height: h, fill: '#2f80c3', rx: Math.min(2, barW / 2) }, g);
+    const tip = document.createElementNS(svgNS, 'title');
+    tip.textContent = k + ': ' + fmtMi(v) + ' miles';
+    rect.appendChild(tip);
+    if (i % labelEvery === 0) {
+      const t = mk('text', { x: padL + step * i + step / 2, y: H - 8, 'text-anchor': 'middle', 'font-size': 9.5, fill: '#7a8899' });
+      t.textContent = labelOf(k);
+    }
+  });
+  // baseline
+  mk('line', { x1: padL, y1: padT + plotH, x2: W - padR, y2: padT + plotH, stroke: '#dde4ec', 'stroke-width': 1 });
+}
+
+function drawPieChart() {
+  const svg = document.getElementById('piechart');
+  const legend = document.getElementById('pielegend');
+  svg.innerHTML = ''; legend.innerHTML = '';
+  if (!VIEW.length) return;
+
+  const sums = new Map();
+  let total = 0;
+  for (const r of VIEW) {
+    const k = r.destination_address || '(blank)';
+    const v = parseFloat(r.miles_travelled || 0);
+    sums.set(k, (sums.get(k) || 0) + v);
+    total += v;
+  }
+  const sorted = [...sums.entries()].sort((a, b) => b[1] - a[1]);
+  const top = sorted.slice(0, 6);
+  const otherVal = sorted.slice(6).reduce((t, x) => t + x[1], 0);
+  const slices = top.map(([name, v], i) => ({ name: shortName(name), full: name, v, color: PIE_COLORS[i] }));
+  if (otherVal > 0) slices.push({ name: 'Other (' + (sorted.length - 6) + ' companies)', full: 'Other', v: otherVal, color: OTHER_COLOR });
+
+  const cx = 100, cy = 100, R = 88, r0 = 52;
+  let a0 = -Math.PI / 2;
+  for (const s of slices) {
+    const frac = s.v / total;
+    let a1 = a0 + frac * 2 * Math.PI;
+    if (frac >= 0.99999) a1 = a0 + 2 * Math.PI - 0.0001; // full-circle arc fix
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    const p = [
+      'M', cx + R * Math.cos(a0), cy + R * Math.sin(a0),
+      'A', R, R, 0, large, 1, cx + R * Math.cos(a1), cy + R * Math.sin(a1),
+      'L', cx + r0 * Math.cos(a1), cy + r0 * Math.sin(a1),
+      'A', r0, r0, 0, large, 0, cx + r0 * Math.cos(a0), cy + r0 * Math.sin(a0),
+      'Z'
+    ].join(' ');
+    const path = document.createElementNS(svgNS, 'path');
+    path.setAttribute('d', p);
+    path.setAttribute('fill', s.color);
+    path.setAttribute('stroke', '#ffffff');
+    path.setAttribute('stroke-width', 2);
+    const tip = document.createElementNS(svgNS, 'title');
+    tip.textContent = s.full + ': ' + fmtMi(s.v) + ' mi (' + (100 * s.v / total).toFixed(1) + '%)';
+    path.appendChild(tip);
+    svg.appendChild(path);
+    a0 = a1;
+  }
+  // centre total
+  const t1 = document.createElementNS(svgNS, 'text');
+  t1.setAttribute('x', cx); t1.setAttribute('y', cy - 2); t1.setAttribute('text-anchor', 'middle');
+  t1.setAttribute('font-size', 17); t1.setAttribute('font-weight', 700); t1.setAttribute('fill', '#1b3a5b');
+  t1.textContent = total >= 10000 ? Math.round(total / 1000) + 'k' : fmtMi(total);
+  svg.appendChild(t1);
+  const t2 = document.createElementNS(svgNS, 'text');
+  t2.setAttribute('x', cx); t2.setAttribute('y', cy + 14); t2.setAttribute('text-anchor', 'middle');
+  t2.setAttribute('font-size', 9.5); t2.setAttribute('fill', '#7a8899');
+  t2.textContent = 'total miles';
+  svg.appendChild(t2);
+
+  legend.innerHTML = slices.map(s => `
+    <div class="lrow" title="${esc(s.full)}">
+      <span class="sw" style="background:${s.color}"></span>
+      <span class="lname">${esc(s.name)}</span>
+      <span class="lval">${fmtMi(s.v)} mi · ${(100 * s.v / total).toFixed(1)}%</span>
+    </div>`).join('');
 }
 
 async function ack(id) {
