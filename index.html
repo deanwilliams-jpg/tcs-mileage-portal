@@ -99,6 +99,9 @@
   .actpill.deleted { background: #fbe3e2; color: #a33835; }
   .actpill.restored { background: #e0edf8; color: #2a6ca3; }
   .actpill.acknowledged, .actpill.unacknowledged, .actpill.updated { background: #fdf0dd; color: #b06a0a; }
+  .actpill.amended { background: #ece4f4; color: #6a4a8e; }
+  #delstat { color: var(--red); cursor: pointer; }
+  #delstat:hover { text-decoration: underline; }
 
   /* ---------- modal ---------- */
   #modal { position: fixed; inset: 0; background: rgba(20,41,63,.55); display: none; align-items: flex-start; justify-content: center; z-index: 50; padding: 40px 16px; overflow-y: auto; }
@@ -168,6 +171,7 @@
       <div class="stats">
         <div>Entries: <b id="s_count">–</b></div>
         <div>Total miles: <b id="s_miles">–</b></div>
+        <div id="delstat" style="display:none" title="Show deleted entries so you can restore them"></div>
       </div>
     </div>
   </div>
@@ -214,7 +218,7 @@
 
 <div id="modal">
   <div class="card">
-    <h3>Add Mileage Entry</h3>
+    <h3 id="modaltitle">Add Mileage Entry</h3>
     <div class="grid">
       <div class="field"><label>Created By *</label><input id="n_by" list="userlist" placeholder="Name"><datalist id="userlist"></datalist></div>
       <div class="field"><label>Date of Travel *</label><input id="n_date" type="date"></div>
@@ -399,6 +403,13 @@ function render() {
     </tr>`).join('');
   document.getElementById('s_count').textContent = VIEW.length.toLocaleString();
   document.getElementById('s_miles').textContent = VIEW.reduce((t, r) => t + parseFloat(r.miles_travelled || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 1 });
+  const delstat = document.getElementById('delstat');
+  const nDel = isAdmin() ? DATA.filter(r => r.deleted).length : 0;
+  if (nDel > 0) {
+    delstat.style.display = '';
+    delstat.innerHTML = 'Deleted: <b>' + nDel + '</b> &mdash; view &amp; restore';
+    delstat.onclick = () => { document.getElementById('f_deleted').value = 'only'; applyFilters(); };
+  } else delstat.style.display = 'none';
   drawCharts();
 }
 
@@ -547,7 +558,8 @@ function optionButtons(r) {
   if (r.deleted) return isAdmin() ? `<button class="ack restore" onclick="restoreEntry(${r.id})">&#8634; Restore</button>` : '';
   const b = [];
   if (r.status === 'Outstanding') b.push(`<button class="ack" onclick="patchEntry(${r.id},{status:'Acknowledged'})">&#9998; Acknowledge</button>`);
-  else b.push(`<button class="ack" onclick="patchEntry(${r.id},{status:'Outstanding'})">&#8634; Undo</button>`);
+  else b.push(`<button class="ack" onclick="patchEntry(${r.id},{status:'Outstanding'})">&#8634; Undo acknowledge</button>`);
+  b.push(`<button class="ack" onclick="openEdit(${r.id})">&#9999; Amend</button>`);
   b.push(`<button class="ack danger" onclick="delEntry(${r.id})">&#10005; Delete</button>`);
   return b.join('');
 }
@@ -597,8 +609,32 @@ async function openLog() {
   }).join('');
 }
 
-function openModal() { document.getElementById('modal').style.display = 'flex'; }
-function closeModal() { document.getElementById('modal').style.display = 'none'; document.getElementById('addmsg').style.display = 'none'; }
+let EDIT_ID = null;
+
+function openModal() {
+  EDIT_ID = null;
+  document.getElementById('modaltitle').textContent = 'Add Mileage Entry';
+  document.getElementById('savebtn').textContent = 'Save entry';
+  document.getElementById('modal').style.display = 'flex';
+}
+
+function openEdit(id) {
+  const r = DATA.find(x => x.id === id);
+  if (!r) return;
+  EDIT_ID = id;
+  document.getElementById('modaltitle').textContent = 'Amend Mileage Entry — ' + fmtDate(r.travel_date);
+  document.getElementById('savebtn').textContent = 'Save changes';
+  document.getElementById('n_by').value = r.created_by || '';
+  document.getElementById('n_date').value = r.travel_date || '';
+  document.getElementById('n_home').value = r.home_address || '';
+  document.getElementById('n_dest').value = r.destination_address || '';
+  document.getElementById('n_purpose').value = r.purpose || '';
+  document.getElementById('n_miles').value = r.miles_travelled || '';
+  document.getElementById('n_notes').value = r.notes || '';
+  document.getElementById('modal').style.display = 'flex';
+}
+
+function closeModal() { document.getElementById('modal').style.display = 'none'; document.getElementById('addmsg').style.display = 'none'; EDIT_ID = null; }
 
 async function saveEntry() {
   const msg = document.getElementById('addmsg');
@@ -614,21 +650,34 @@ async function saveEntry() {
     created_by: by, travel_date: date, destination_address: dest,
     home_address: document.getElementById('n_home').value.trim(),
     purpose: document.getElementById('n_purpose').value.trim() || 'site visit',
-    miles_travelled: miles, notes: document.getElementById('n_notes').value.trim(),
-    status: 'Outstanding', source: 'portal'
+    miles_travelled: miles, notes: document.getElementById('n_notes').value.trim()
   };
   document.getElementById('savebtn').disabled = true;
-  const r = await fetch(SUPA, {
-    method: 'POST',
-    headers: hdrs({ 'Content-Type': 'application/json', 'Prefer': 'return=representation' }),
-    body: JSON.stringify(body)
-  });
+  let r;
+  if (EDIT_ID) {
+    r = await fetch(SUPA + '?id=eq.' + EDIT_ID, {
+      method: 'PATCH',
+      headers: hdrs({ 'Content-Type': 'application/json', 'Prefer': 'return=representation' }),
+      body: JSON.stringify(body)
+    });
+  } else {
+    r = await fetch(SUPA, {
+      method: 'POST',
+      headers: hdrs({ 'Content-Type': 'application/json', 'Prefer': 'return=representation' }),
+      body: JSON.stringify(Object.assign({ status: 'Outstanding', source: 'portal' }, body))
+    });
+  }
   document.getElementById('savebtn').disabled = false;
   if (r.ok) {
     const [row] = await r.json();
-    DATA.unshift(row);
+    if (EDIT_ID) {
+      const i = DATA.findIndex(x => x.id === EDIT_ID);
+      if (i >= 0) DATA[i] = row;
+    } else {
+      DATA.unshift(row);
+      document.getElementById('n_dest').value = ''; document.getElementById('n_miles').value = ''; document.getElementById('n_notes').value = '';
+    }
     msg.textContent = 'Saved.'; msg.style.color = '#257a3e'; msg.style.display = 'block';
-    document.getElementById('n_dest').value = ''; document.getElementById('n_miles').value = ''; document.getElementById('n_notes').value = '';
     applyFilters();
     setTimeout(closeModal, 700);
   } else {
