@@ -318,6 +318,14 @@ const COMP = BASE + '/mileage_companies';
 const ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt3Z2hrc2tjbXd1c2tuY2poZmdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxMjUxOTMsImV4cCI6MjEwMTcwMTE5M30.JLY_dyo1qbzlHNL2GqwQ9nCxNZIPhnSjckC1Z11o70k';
 
 let KEY = localStorage.getItem('tcs_portal_key') || '';
+
+// invite links: portal.html#key=PASSCODE signs the visitor in automatically
+const keyFromLink = location.hash.match(/^#key=(.+)$/);
+if (keyFromLink) {
+  KEY = decodeURIComponent(keyFromLink[1]).trim().toLowerCase();
+  localStorage.setItem('tcs_portal_key', KEY);
+  history.replaceState(null, '', location.pathname + location.search);
+}
 let DATA = [];
 let VIEW = [];
 let sortK = 'travel_date', sortDir = -1;
