@@ -928,8 +928,16 @@ function openCustomersTab() {
 
 function openCustomers() {
   document.getElementById('custmodal').style.display = 'flex';
-  renderCustomers();
+  if (!COMPANIES.length) {
+    document.getElementById('custrows').innerHTML = '<tr><td colspan="7">Loading customers…</td></tr>';
+    fetchCompanies().then(renderCustomers);
+  } else renderCustomers();
 }
+
+// opening #customers while the page is already loaded (same-tab navigation)
+window.addEventListener('hashchange', () => {
+  if (location.hash === '#customers') openCustomers();
+});
 
 function closeCustomers() {
   document.getElementById('custmodal').style.display = 'none';
