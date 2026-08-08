@@ -332,7 +332,25 @@
 
 <footer>Total Crane Solutions &mdash; internal mileage log. Data migrated from the previous job management platform (2,670 historical entries).</footer>
 
+<div id="updatebar" style="display:none;position:fixed;top:0;left:0;right:0;z-index:200;background:#1b3a5b;color:#fff;text-align:center;padding:9px;font-size:13.5px;cursor:pointer" onclick="location.reload()">
+  A newer version of the portal is available &mdash; <b>click here to update</b>
+</div>
+
 <script>
+const BUILD = 'B018';
+// GitHub Pages caches pages for 10 minutes and open tabs never refetch on
+// their own — poll for a newer build and offer a one-click refresh.
+async function checkForUpdate() {
+  try {
+    const r = await fetch(location.pathname, { cache: 'no-store' });
+    const txt = await r.text();
+    const m = txt.match(/const BUILD = '([^']+)'/);
+    if (m && m[1] !== BUILD) document.getElementById('updatebar').style.display = 'block';
+  } catch (e) {}
+}
+setTimeout(checkForUpdate, 5000);
+setInterval(checkForUpdate, 5 * 60 * 1000);
+
 const BASE = 'https://kwghkskcmwuskncjhfgf.supabase.co/rest/v1';
 const SUPA = BASE + '/mileage_entries';
 const COMP = BASE + '/mileage_companies';
