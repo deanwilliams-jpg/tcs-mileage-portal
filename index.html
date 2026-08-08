@@ -166,7 +166,6 @@
   <div class="panel">
     <h2>&#128269; Search Filters</h2>
     <div class="filters">
-      <div class="field"><label>Created By</label><select id="f_user"><option value="">All</option></select></div>
       <div class="field"><label>Status</label><select id="f_status"><option value="">All</option><option>Outstanding</option><option>Acknowledged</option></select></div>
       <div class="field"><label>Destination / Company</label><input id="f_dest" type="text" placeholder="e.g. Timet, Wolverhampton"></div>
       <div class="field"><label>Date Range</label>
@@ -241,8 +240,7 @@
   <div class="card">
     <h3 id="modaltitle">Add Mileage Entry</h3>
     <div class="grid">
-      <div class="field"><label>Created By *</label><input id="n_by" list="userlist" placeholder="Name"><datalist id="userlist"></datalist></div>
-      <div class="field"><label>Date of Travel *</label><input id="n_date" type="date"></div>
+      <div class="field wide" style="grid-column:1/-1"><label>Date of Travel *</label><input id="n_date" type="date"></div>
 
       <div class="field wide" style="background:#f5f8fb;border:1px solid var(--line);border-radius:8px;padding:12px">
         <label style="margin-bottom:8px">Route planner &mdash; pick your stops and the mileage is worked out for you</label>
@@ -337,7 +335,8 @@
 </div>
 
 <script>
-const BUILD = 'B018';
+const BUILD = 'B019';
+const DEFAULT_USER = 'Natalie Porter';
 // GitHub Pages caches pages for 10 minutes and open tabs never refetch on
 // their own — poll for a newer build and offer a one-click refresh.
 async function checkForUpdate() {
@@ -426,12 +425,8 @@ function logout() {
 }
 
 function initUI() {
-  const users = [...new Set(DATA.map(r => r.created_by))].sort();
   const dests = [...new Set(DATA.map(r => r.destination_address))].sort();
   const purposes = [...new Set(DATA.map(r => r.purpose).filter(Boolean))].sort();
-  const sel = document.getElementById('f_user');
-  sel.innerHTML = '<option value="">All</option>' + users.map(u => `<option>${esc(u)}</option>`).join('');
-  document.getElementById('userlist').innerHTML = users.map(u => `<option value="${esc(u)}">`).join('');
   document.getElementById('destlist').innerHTML = dests.map(d => `<option value="${esc(d)}">`).join('');
   document.getElementById('purposelist').innerHTML = purposes.map(p => `<option value="${esc(p)}">`).join('');
   const homes = DATA.filter(r => r.home_address).map(r => r.home_address);
@@ -449,7 +444,6 @@ document.getElementById('f_range').addEventListener('change', function () {
 });
 
 function applyFilters() {
-  const u = document.getElementById('f_user').value;
   const s = document.getElementById('f_status').value;
   const d = document.getElementById('f_dest').value.toLowerCase();
   const from = document.getElementById('f_start').value;
@@ -457,7 +451,6 @@ function applyFilters() {
   const del = isAdmin() ? document.getElementById('f_deleted').value : '';
   VIEW = DATA.filter(r =>
     (del === 'show' ? true : del === 'only' ? r.deleted : !r.deleted) &&
-    (!u || r.created_by === u) &&
     (!s || r.status === s) &&
     (!d || (r.destination_address || '').toLowerCase().includes(d)) &&
     (!from || r.travel_date >= from) &&
@@ -468,7 +461,7 @@ function applyFilters() {
 }
 
 function resetFilters() {
-  for (const id of ['f_user', 'f_status', 'f_dest', 'f_range', 'f_start', 'f_end', 'f_deleted']) document.getElementById(id).value = '';
+  for (const id of ['f_status', 'f_dest', 'f_range', 'f_start', 'f_end', 'f_deleted']) document.getElementById(id).value = '';
   applyFilters();
 }
 document.getElementById('f_deleted').addEventListener('change', applyFilters);
@@ -739,7 +732,6 @@ function openEdit(id) {
   document.getElementById('savebtn').textContent = 'Save changes';
   resetStops();
   ROUTE_LEGS = r.route_legs || null;
-  document.getElementById('n_by').value = r.created_by || '';
   document.getElementById('n_date').value = r.travel_date || '';
   document.getElementById('n_home').value = r.home_address || '';
   document.getElementById('n_dest').value = r.destination_address || '';
@@ -753,14 +745,15 @@ function closeModal() { document.getElementById('modal').style.display = 'none';
 
 async function saveEntry() {
   const msg = document.getElementById('addmsg');
-  const by = document.getElementById('n_by').value.trim();
   const date = document.getElementById('n_date').value;
   const dest = document.getElementById('n_dest').value.trim();
   const miles = parseFloat(document.getElementById('n_miles').value);
-  if (!by || !date || !dest || !(miles >= 0)) {
+  if (!date || !dest || !(miles >= 0)) {
     msg.textContent = 'Please fill in the required fields (marked *).';
     msg.style.color = 'var(--red)'; msg.style.display = 'block'; return;
   }
+  const existing = EDIT_ID ? DATA.find(x => x.id === EDIT_ID) : null;
+  const by = existing ? existing.created_by : DEFAULT_USER;
   const body = {
     created_by: by, travel_date: date, destination_address: dest,
     home_address: document.getElementById('n_home').value.trim(),
@@ -824,6 +817,14 @@ function buildRows() {
     if (isAdmin()) row.push(r.deleted ? 'yes' : '');
     rows.push(row);
   }
+  // grand-total row at the bottom: sum of every journey's total miles
+  const jIdx = head.indexOf('Journey Total Miles');
+  const grand = VIEW.reduce((t, r) => t + parseFloat(r.miles_travelled || 0), 0);
+  const totalRow = head.map(() => '');
+  totalRow[0] = 'TOTAL — ' + VIEW.length + ' journeys';
+  totalRow[jIdx] = Math.round(grand * 10) / 10;
+  rows.push(head.map(() => ''));   // blank spacer row
+  rows.push(totalRow);
   return rows;
 }
 
