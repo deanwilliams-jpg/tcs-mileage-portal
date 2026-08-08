@@ -335,7 +335,7 @@
 </div>
 
 <script>
-const BUILD = 'B019';
+const BUILD = 'B020';
 const DEFAULT_USER = 'Natalie Porter';
 // GitHub Pages caches pages for 10 minutes and open tabs never refetch on
 // their own — poll for a newer build and offer a one-click refresh.
@@ -821,7 +821,7 @@ function buildRows() {
   const jIdx = head.indexOf('Journey Total Miles');
   const grand = VIEW.reduce((t, r) => t + parseFloat(r.miles_travelled || 0), 0);
   const totalRow = head.map(() => '');
-  totalRow[0] = 'TOTAL — ' + VIEW.length + ' journeys';
+  totalRow[0] = 'TOTAL — ' + VIEW.length + (VIEW.length === 1 ? ' journey' : ' journeys');
   totalRow[jIdx] = Math.round(grand * 10) / 10;
   rows.push(head.map(() => ''));   // blank spacer row
   rows.push(totalRow);
