@@ -91,6 +91,24 @@
   tr.deletedrow td { color: var(--muted); }
   tr.siterow td { background: #f8fafc; }
   tr.siterow td:first-child { border-left: 3px solid var(--orange); }
+
+  /* ---------- route stop picker ---------- */
+  .stoppick { position: relative; flex: 1; min-width: 0; }
+  .pickbtn { width: 100%; text-align: left; padding: 7px 26px 7px 9px; border: 1px solid var(--line); border-radius: 5px; font-size: 13px; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237a8899'/%3E%3C/svg%3E") no-repeat right 9px center; cursor: pointer; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pickbtn.empty { color: var(--muted); }
+  .pickpanel { position: absolute; top: calc(100% + 3px); left: 0; right: 0; background: #fff; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 8px 24px rgba(20,41,63,.18); z-index: 70; }
+  .picksearch { width: calc(100% - 16px); margin: 8px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 5px; font-size: 13px; }
+  .picklist { max-height: 290px; overflow-y: auto; border-top: 1px solid #edf1f5; padding-bottom: 4px; }
+  .prow, .srow { padding: 7px 10px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 7px; }
+  .prow { font-weight: 600; color: var(--navy); }
+  .prow:hover, .srow:hover { background: #eaf2fa; }
+  .prow.open { background: #f5f8fb; }
+  .prow .pcount { margin-left: auto; font-weight: 400; font-size: 11.5px; color: var(--blue); white-space: nowrap; }
+  .prow .chev { color: var(--orange); width: 11px; flex: 0 0 11px; }
+  .srow { padding-left: 26px; border-left: 3px solid var(--orange); background: #fbfcfe; font-weight: 400; }
+  .srow .arrow { color: var(--muted); }
+  .srow.hq { font-style: italic; }
+  .picknone { padding: 12px; font-size: 12.5px; color: var(--muted); }
   tr.deletedrow td:not(:last-child) { text-decoration: line-through; }
   .rolebadge { font-size: 10.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 3px 9px; border-radius: 12px; background: #fdf0dd; color: #b06a0a; }
   #logtable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
@@ -884,16 +902,105 @@ function stopOptions(sel) {
   return html;
 }
 
+function pickLabel(c) {
+  return c.name + (c.parent_name ? ' — ' + c.parent_name.trim() : '');
+}
+
 function addStop(sel) {
   const wrap = document.getElementById('stops');
   const row = document.createElement('div');
   row.className = 'stoprow';
   row.style.cssText = 'display:flex;gap:6px;align-items:center;margin-top:6px';
+  const c = COMPANIES.find(x => String(x.id) === String(sel));
   row.innerHTML = `<span style="font-size:11.5px;color:var(--muted);width:38px">Stop</span>
-    <select style="flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:5px;font-size:13px">${stopOptions(sel)}</select>
+    <div class="stoppick" data-id="${c ? c.id : ''}">
+      <button type="button" class="pickbtn${c ? '' : ' empty'}" onclick="openPick(this)">${c ? esc(pickLabel(c)) : '— choose a location —'}</button>
+      <div class="pickpanel" style="display:none">
+        <input class="picksearch" placeholder="Search customer or site…" oninput="renderPickList(this.closest('.stoppick'))">
+        <div class="picklist" onclick="pickClick(event, this.closest('.stoppick'))"></div>
+      </div>
+    </div>
     <button type="button" class="ack danger" title="Remove stop" onclick="this.parentElement.remove(); renumberStops()">&#10005;</button>`;
   wrap.appendChild(row);
   renumberStops();
+}
+
+function closeAllPicks() {
+  document.querySelectorAll('.pickpanel').forEach(p => p.style.display = 'none');
+}
+document.addEventListener('click', e => { if (!e.target.closest('.stoppick')) closeAllPicks(); });
+
+function openPick(btn) {
+  const widget = btn.closest('.stoppick');
+  const panel = widget.querySelector('.pickpanel');
+  const wasOpen = panel.style.display !== 'none';
+  closeAllPicks();
+  if (wasOpen) return;
+  panel.style.display = 'block';
+  widget._expanded = widget._expanded || new Set();
+  const s = widget.querySelector('.picksearch');
+  s.value = '';
+  renderPickList(widget);
+  s.focus();
+}
+
+function renderPickList(widget) {
+  const q = (widget.querySelector('.picksearch').value || '').trim().toLowerCase();
+  const expanded = widget._expanded || (widget._expanded = new Set());
+  const norm = s => (s || '').trim().toLowerCase();
+  const match = c => !q || (c.name + ' ' + (c.parent_name || '') + ' ' + compFull(c)).toLowerCase().includes(q);
+  const noloc = c => c.lat ? '' : ' <span style="color:var(--red);font-size:10.5px">(no map location)</span>';
+
+  const sitesByParent = new Map();
+  for (const c of COMPANIES) {
+    if (!c.parent_name) continue;
+    const k = norm(c.parent_name);
+    if (!sitesByParent.has(k)) sitesByParent.set(k, []);
+    sitesByParent.get(k).push(c);
+  }
+  let html = '';
+  const renderGroup = (label, key, headOffice, sites) => {
+    const pMatch = !q || label.toLowerCase().includes(q) || (headOffice && match(headOffice));
+    const siteMatches = sites.filter(match);
+    if (q && !pMatch && !siteMatches.length) return;
+    sites.sort((a, b) => a.name.localeCompare(b.name));
+    const showSites = q ? (siteMatches.length ? siteMatches : sites) : (expanded.has(key) ? sites : null);
+    const isOpen = !!showSites;
+    html += `<div class="prow${isOpen ? ' open' : ''}" data-act="toggle" data-key="${esc(key)}"><span class="chev">${isOpen ? '&#9662;' : '&#9656;'}</span>${esc(label)}<span class="pcount">${sites.length} site${sites.length > 1 ? 's' : ''}</span></div>`;
+    if (isOpen) {
+      if (headOffice) html += `<div class="srow hq" data-act="pick" data-id="${headOffice.id}"><span class="arrow">&#8627;</span>Head office — ${esc(label)}${noloc(headOffice)}</div>`;
+      for (const s of showSites) html += `<div class="srow" data-act="pick" data-id="${s.id}"><span class="arrow">&#8627;</span>${esc(s.name)}${noloc(s)}</div>`;
+    }
+  };
+  for (const p of COMPANIES) {
+    if (p.parent_name) continue;
+    const key = norm(p.name);
+    const sites = sitesByParent.get(key);
+    if (sites) { renderGroup(p.name, key, p, sites); sitesByParent.delete(key); }
+    else if (match(p)) html += `<div class="prow" data-act="pick" data-id="${p.id}"><span class="chev"></span>${esc(p.name)}${p.is_home ? ' <span class="rolebadge">Home</span>' : ''}${noloc(p)}</div>`;
+  }
+  for (const sites of sitesByParent.values()) {
+    renderGroup(sites[0].parent_name.trim(), norm(sites[0].parent_name), null, sites);
+  }
+  widget.querySelector('.picklist').innerHTML = html || '<div class="picknone">Nothing matches that search.</div>';
+}
+
+function pickClick(e, widget) {
+  const t = e.target.closest('[data-act]');
+  if (!t) return;
+  if (t.dataset.act === 'toggle') {
+    const k = t.dataset.key;
+    if (widget._expanded.has(k)) widget._expanded.delete(k); else widget._expanded.add(k);
+    renderPickList(widget);
+  } else {
+    const c = COMPANIES.find(x => String(x.id) === t.dataset.id);
+    if (!c) return;
+    widget.dataset.id = c.id;
+    const btn = widget.querySelector('.pickbtn');
+    btn.textContent = pickLabel(c);
+    btn.classList.remove('empty');
+    closeAllPicks();
+  }
 }
 
 function renumberStops() {
@@ -916,7 +1023,7 @@ function resetStops() {
 }
 
 function selectedStops() {
-  return [...document.querySelectorAll('#stops select')].map(s => COMPANIES.find(c => String(c.id) === s.value)).filter(Boolean);
+  return [...document.querySelectorAll('#stops .stoppick')].map(w => COMPANIES.find(c => String(c.id) === w.dataset.id)).filter(Boolean);
 }
 
 async function calcRoute() {
@@ -1094,7 +1201,6 @@ async function saveCustomer() {
     msg.textContent = 'Saved.' + (pc && !ll ? ' (Postcode not recognised — mileage can’t be worked out for this customer until it’s corrected.)' : '');
     msg.style.color = pc && !ll ? '#b06a0a' : '#257a3e';
     renderCustomers();
-    document.querySelectorAll('#stops select').forEach(s => { const v = s.value; s.innerHTML = stopOptions(v); });
     if (!(pc && !ll)) setTimeout(() => { document.getElementById('custeditmodal').style.display = 'none'; }, 700);
   } else {
     msg.textContent = 'Save failed (HTTP ' + r.status + ').'; msg.style.color = 'var(--red)';
