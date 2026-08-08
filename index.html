@@ -928,7 +928,11 @@ function addStop(sel) {
 function closeAllPicks() {
   document.querySelectorAll('.pickpanel').forEach(p => p.style.display = 'none');
 }
-document.addEventListener('click', e => { if (!e.target.closest('.stoppick')) closeAllPicks(); });
+document.addEventListener('click', e => {
+  // a click that re-rendered the list detaches its target — never treat that as "outside"
+  if (!e.target.isConnected) return;
+  if (!e.target.closest('.stoppick')) closeAllPicks();
+});
 
 function openPick(btn) {
   const widget = btn.closest('.stoppick');
@@ -986,6 +990,7 @@ function renderPickList(widget) {
 }
 
 function pickClick(e, widget) {
+  e.stopPropagation();
   const t = e.target.closest('[data-act]');
   if (!t) return;
   if (t.dataset.act === 'toggle') {
